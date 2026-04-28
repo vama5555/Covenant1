@@ -108,9 +108,16 @@ function parseCSV(text){
   if(val||cur.length){cur.push(val);rows.push(cur);}
   return rows.filter(r=>r.length&&!(r.length===1&&!r[0].trim()));
 }
-function toCSV(items){
+function toCSVItems(items){
   const esc=v=>{const s=String(v??"");return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
   return "nom,prix\n"+items.map(it=>esc(it.nom)+","+esc(it.prix)).join("\n");
+}
+function toCSVPMs(pms,cats){
+  const esc=v=>{const s=String(v??"");return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  return "nom,categorie\n"+pms.map(p=>{
+    const c=cats.find(x=>x.id===p.categorie_id);
+    return esc(p.nom)+","+esc(c?c.nom:"");
+  }).join("\n");
 }
 function downloadCSV(filename,content){
   const blob=new Blob([content],{type:"text/csv;charset=utf-8"});
@@ -118,6 +125,59 @@ function downloadCSV(filename,content){
   const a=document.createElement("a");
   a.href=url; a.download=filename; document.body.appendChild(a); a.click();
   document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// ── Section pliable d'items avec recherche ──────────────────────────────
+function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
+  const [open,setOpen]=useState(false);
+  const [q,setQ]=useState("");
+  const filtered=useMemo(()=>{
+    if(!q.trim())return items;
+    const s=q.toLowerCase();
+    return items.filter(it=>it.nom.toLowerCase().includes(s));
+  },[items,q]);
+  const selCount=useMemo(()=>items.reduce((n,it)=>n+((+(qtes[it.id])||0)>0?1:0),0),[items,qtes]);
+  const accentColor=accent||C.text;
+  const bgHeader=accent?"rgba(212,132,10,0.08)":C.surfaceAlt;
+  const borderHeader=accent?"rgba(212,132,10,0.25)":C.border;
+
+  return (
+    <div style={{marginBottom:8}}>
+      <div onClick={()=>setOpen(o=>!o)}
+        style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",padding:"9px 12px",background:bgHeader,border:"1px solid "+borderHeader,borderRadius:8,transition:"background .15s",userSelect:"none"}}
+        onMouseEnter={e=>e.currentTarget.style.filter="brightness(1.15)"}
+        onMouseLeave={e=>e.currentTarget.style.filter="brightness(1)"}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:11,color:accent||C.muted,transform:open?"rotate(90deg)":"rotate(0deg)",transition:"transform .25s",display:"inline-block"}}>▶</span>
+          <span style={{fontSize:11,fontWeight:700,color:accentColor,textTransform:"uppercase",letterSpacing:"0.08em"}}>
+            {title}{pct>0&&" · "+pct+"%"}
+          </span>
+          {selCount>0&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:4,fontWeight:600,background:"rgba(61,191,143,0.15)",color:C.green,border:"1px solid rgba(61,191,143,0.3)"}}>{selCount} sélectionné{selCount>1?"s":""}</span>}
+        </div>
+        <span style={{fontSize:11,color:C.muted}}>
+          {open?(filtered.length+" / "+items.length+" items"):(items.length+" items")}
+        </span>
+      </div>
+      {open&&(
+        <div style={{padding:"10px 4px 6px",borderLeft:accent?"3px solid rgba(212,132,10,0.4)":"none",marginLeft:accent?2:0,paddingLeft:accent?12:4,background:accent?"rgba(212,132,10,0.03)":"transparent",borderRadius:accent?"0 0 8px 0":0}}>
+          <input type="text" placeholder="🔍 Rechercher un item..." value={q} onChange={e=>setQ(e.target.value)}
+            style={{width:"100%",marginBottom:10,fontSize:13,padding:"8px 11px"}}/>
+          <div style={{maxHeight:380,overflowY:"auto",paddingRight:4}}>
+            {filtered.length===0
+              ?<div style={{textAlign:"center",padding:30,color:C.muted,fontSize:11,fontStyle:"italic"}}>Aucun item trouvé</div>
+              :filtered.map(it=>(
+                <div key={it.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
+                  <span style={{flex:1,fontSize:13,color:C.text}}>{it.nom}<span style={{fontSize:11,color:C.muted,marginLeft:5}}>({fmt(it.prix)})</span></span>
+                  <input type="number" min="0" placeholder="0" value={qtes[it.id]||""} onChange={e=>onChangeQte(it.id,e.target.value)}
+                    style={{width:72,textAlign:"center"}}/>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function Main({cu,setCu,onLogout}){
@@ -205,6 +265,8 @@ function Main({cu,setCu,onLogout}){
   const selCatG  = selGang? catsGang.find(c=>c.id===selGang.categorie_id)||null: null;
   const aPct     = tx.dest==="pm"?(selCatPM?selCatPM.pct_objets:0):(selCatG?selCatG.pct_objets:0);
   const aLiasse  = tx.dest==="pm"?(selCatPM?selCatPM.taux_liasse:0):(selCatG?selCatG.taux_liasse:0);
+
+  // Items utilisés pour le calcul (PM = items_pm, Gang = items_pm + items_gang)
   const aItems   = tx.dest==="gang"?[...itemsPM,...itemsG]:itemsPM;
 
   const totObj=useMemo(()=>{
@@ -214,6 +276,10 @@ function Main({cu,setCu,onLogout}){
   const totLia  = aLiasse*(+(tx.liasseQte)||0);
   const totArg  = tx.dest==="pm"?Math.round((+(tx.argentSale)||0)*0.4):0;
   const txTotal = Math.round(totObj)+totLia+totArg;
+
+  function setQte(id,val){
+    setTx(f=>({...f,qtes:{...f.qtes,[id]:val}}));
+  }
 
   async function submit(){
     if(tx.dest==="pm"&&(!tx.pmId||!tx.membreId))return;
@@ -298,7 +364,11 @@ function Main({cu,setCu,onLogout}){
   const [nIG,setNIG]=useState({nom:"",prix:""});    const [eIG,setEIG]=useState(null);
   const [nBM,setNBM]=useState({nom:"",solde:""});
   const [nU,setNU]=useState({nom:"",code:"",role:"membre"});
-  const [eCapId,setECapId]=useState(null); const [eCapV,setECapV]=useState({});
+
+  // Apparts dans Database (édition complète)
+  const [eApId,setEApId]=useState(null);
+  const [eApV,setEApV]=useState({});
+  const [nAp,setNAp]=useState({nom:"",categorie:"recel",max_coffre:"",max_stock:"",code:""});
 
   const [pwd,setPwd]=useState({cur:"",neu:"",conf:""});
   const [pwdMsg,setPwdMsg]=useState(null);
@@ -317,13 +387,17 @@ function Main({cu,setCu,onLogout}){
     setTimeout(()=>setPwdMsg(null),3500);
   }
 
-  const fileRefPM=useRef(null);
-  const fileRefG=useRef(null);
+  // ── Imports CSV ──────────────────────────────────────────
+  const fileRefPM=useRef(null);     // items_pm
+  const fileRefG=useRef(null);      // items_gang
+  const fileRefPMs=useRef(null);    // pms (petites mains)
   const [importDlg,setImportDlg]=useState(null);
 
   function triggerImport(target){
-    (target==="pm"?fileRefPM:fileRefG).current?.click();
+    const r=target==="items_pm"?fileRefPM:target==="items_gang"?fileRefG:fileRefPMs;
+    r.current?.click();
   }
+
   async function onFileChosen(e,target){
     const file=e.target.files?.[0]; e.target.value="";
     if(!file)return;
@@ -331,29 +405,52 @@ function Main({cu,setCu,onLogout}){
     const rows=parseCSV(text);
     if(!rows.length){alert("Fichier vide");return;}
     const first=rows[0];
-    const hasHeader=first.length>=2 && isNaN(parseFloat(first[1]));
-    const data=(hasHeader?rows.slice(1):rows)
-      .map(r=>({nom:(r[0]||"").trim(),prix:Math.round(parseFloat((r[1]||"0").replace(",","."))||0)}))
-      .filter(r=>r.nom&&r.prix>=0);
-    if(!data.length){alert("Aucune ligne valide trouvée");return;}
-    setImportDlg({target,items:data});
+
+    if(target==="pms"){
+      // PM : nom,categorie
+      const hasHeader=first.length>=2 && /nom|name/i.test(first[0]);
+      const lines=hasHeader?rows.slice(1):rows;
+      const data=[];
+      const skipped=[];
+      lines.forEach(r=>{
+        const nom=(r[0]||"").trim();
+        const catName=(r[1]||"").trim();
+        if(!nom){return;}
+        const cat=catsPM.find(c=>c.nom.toLowerCase()===catName.toLowerCase());
+        if(!cat){skipped.push({nom,catName});return;}
+        data.push({nom,categorie_id:cat.id});
+      });
+      if(!data.length&&!skipped.length){alert("Aucune ligne valide trouvée");return;}
+      setImportDlg({target,items:data,skipped});
+    } else {
+      // items_pm / items_gang : nom,prix
+      const hasHeader=first.length>=2 && isNaN(parseFloat(first[1]));
+      const data=(hasHeader?rows.slice(1):rows)
+        .map(r=>({nom:(r[0]||"").trim(),prix:Math.round(parseFloat((r[1]||"0").replace(",","."))||0)}))
+        .filter(r=>r.nom&&r.prix>=0);
+      if(!data.length){alert("Aucune ligne valide trouvée");return;}
+      setImportDlg({target,items:data,skipped:[]});
+    }
   }
+
   async function confirmImport(mode){
     if(!importDlg)return;
     const {target,items}=importDlg;
-    const table=target==="pm"?"items_pm":"items_gang";
+    const table=target==="items_pm"?"items_pm":target==="items_gang"?"items_gang":"pms";
     if(mode==="replace"){
       await sb.from(table).delete().neq("id","00000000-0000-0000-0000-000000000000");
     }
     const {data}=await sb.from(table).insert(items).select();
-    if(target==="pm")setItemsPM(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
-    else setItemsG(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
+    if(target==="items_pm")setItemsPM(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
+    else if(target==="items_gang")setItemsG(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
+    else setPMs(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
     setImportDlg(null);
   }
+
   function exportCSV(target){
-    const items=target==="pm"?itemsPM:itemsG;
-    const fname=target==="pm"?"items_pm.csv":"items_gang.csv";
-    downloadCSV(fname,toCSV(items));
+    if(target==="items_pm"){downloadCSV("items_pm.csv",toCSVItems(itemsPM));return;}
+    if(target==="items_gang"){downloadCSV("items_gang.csv",toCSVItems(itemsG));return;}
+    if(target==="pms"){downloadCSV("petites_mains.csv",toCSVPMs(pms,catsPM));return;}
   }
 
   const TABS=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
@@ -382,24 +479,52 @@ function Main({cu,setCu,onLogout}){
     </>;
   }
 
-  function PList({list,setList,cats,table,eId,setEId,ni,setNi}){
-    async function save(p){await sb.from(table).update({nom:p.nom,categorie_id:p.categorie_id}).eq("id",p.id);setList(ps=>ps.map(x=>x.id===p.id?p:x));setEId(null);}
-    async function add(){if(!ni.nom||!ni.categorie_id)return;const{data}=await sb.from(table).insert({nom:ni.nom,categorie_id:ni.categorie_id}).select().single();if(data)setList(p=>[...p,data]);setNi({nom:"",categorie_id:""});}
-    async function del(id){await sb.from(table).delete().eq("id",id);setList(ps=>ps.filter(x=>x.id!==id));}
+  function PMList(){
+    async function save(p){await sb.from("pms").update({nom:p.nom,categorie_id:p.categorie_id}).eq("id",p.id);setPMs(ps=>ps.map(x=>x.id===p.id?p:x));setEPM(null);}
+    async function add(){if(!nPM.nom||!nPM.categorie_id)return;const{data}=await sb.from("pms").insert({nom:nPM.nom,categorie_id:nPM.categorie_id}).select().single();if(data)setPMs(p=>[...p,data]);setNPM({nom:"",categorie_id:""});}
+    async function del(id){await sb.from("pms").delete().eq("id",id);setPMs(ps=>ps.filter(x=>x.id!==id));}
     return <>
-      {list.map(p=>(
+      {isAdmin&&<div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
+        <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
+        <button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>
+      </div>}
+      {!isAdmin&&<div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+        <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
+      </div>}
+      {pms.map(p=>(
         <div key={p.id} style={S.row}>
-          {eId===p.id
-            ?<><input style={{flex:1}} value={p.nom} onChange={e=>setList(ps=>ps.map(x=>x.id===p.id?{...x,nom:e.target.value}:x))}/><select value={p.categorie_id} onChange={e=>setList(ps=>ps.map(x=>x.id===p.id?{...x,categorie_id:e.target.value}:x))}>{cats.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select><button onClick={()=>save(p)} style={{color:C.green,fontWeight:700}}>OK</button></>
-            :<><span style={{flex:1,fontSize:14,color:C.text}}>{p.nom}</span><span style={{fontSize:12,color:C.muted}}>{cats.find(c=>c.id===p.categorie_id)?.nom||"?"}</span><button onClick={()=>setEId(p.id)}>Mod.</button><button onClick={()=>del(p.id)} style={{color:C.red}}>×</button></>
+          {isAdmin&&ePM===p.id
+            ?<><input style={{flex:1}} value={p.nom} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,nom:e.target.value}:x))}/><select value={p.categorie_id} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,categorie_id:e.target.value}:x))}>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select><button onClick={()=>save(p)} style={{color:C.green,fontWeight:700}}>OK</button></>
+            :<><span style={{flex:1,fontSize:14,color:C.text}}>{p.nom}</span><span style={{fontSize:12,color:C.muted}}>{catsPM.find(c=>c.id===p.categorie_id)?.nom||"?"}</span>{isAdmin&&<><button onClick={()=>setEPM(p.id)}>Mod.</button><button onClick={()=>del(p.id)} style={{color:C.red}}>×</button></>}</>
           }
         </div>
       ))}
-      <div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
-        <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={ni.nom} onChange={e=>setNi(f=>({...f,nom:e.target.value}))}/></div>
-        <div><div style={S.lbl}>Catégorie</div><select value={ni.categorie_id||""} onChange={e=>setNi(f=>({...f,categorie_id:e.target.value}))}><option value="">—</option>{cats.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
+      {isAdmin&&<div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+        <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nPM.nom} onChange={e=>setNPM(f=>({...f,nom:e.target.value}))}/></div>
+        <div><div style={S.lbl}>Catégorie</div><select value={nPM.categorie_id||""} onChange={e=>setNPM(f=>({...f,categorie_id:e.target.value}))}><option value="">—</option>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
         <button onClick={add} style={{fontWeight:700}}>+</button>
-      </div>
+      </div>}
+    </>;
+  }
+
+  function GangList(){
+    async function save(p){await sb.from("gangs").update({nom:p.nom,categorie_id:p.categorie_id}).eq("id",p.id);setGangs(ps=>ps.map(x=>x.id===p.id?p:x));setEGa(null);}
+    async function add(){if(!nGa.nom||!nGa.categorie_id)return;const{data}=await sb.from("gangs").insert({nom:nGa.nom,categorie_id:nGa.categorie_id}).select().single();if(data)setGangs(p=>[...p,data]);setNGa({nom:"",categorie_id:""});}
+    async function del(id){await sb.from("gangs").delete().eq("id",id);setGangs(ps=>ps.filter(x=>x.id!==id));}
+    return <>
+      {gangs.map(p=>(
+        <div key={p.id} style={S.row}>
+          {isAdmin&&eGa===p.id
+            ?<><input style={{flex:1}} value={p.nom} onChange={e=>setGangs(ps=>ps.map(x=>x.id===p.id?{...x,nom:e.target.value}:x))}/><select value={p.categorie_id} onChange={e=>setGangs(ps=>ps.map(x=>x.id===p.id?{...x,categorie_id:e.target.value}:x))}>{catsGang.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select><button onClick={()=>save(p)} style={{color:C.green,fontWeight:700}}>OK</button></>
+            :<><span style={{flex:1,fontSize:14,color:C.text}}>{p.nom}</span><span style={{fontSize:12,color:C.muted}}>{catsGang.find(c=>c.id===p.categorie_id)?.nom||"?"}</span>{isAdmin&&<><button onClick={()=>setEGa(p.id)}>Mod.</button><button onClick={()=>del(p.id)} style={{color:C.red}}>×</button></>}</>
+          }
+        </div>
+      ))}
+      {isAdmin&&<div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+        <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nGa.nom} onChange={e=>setNGa(f=>({...f,nom:e.target.value}))}/></div>
+        <div><div style={S.lbl}>Catégorie</div><select value={nGa.categorie_id||""} onChange={e=>setNGa(f=>({...f,categorie_id:e.target.value}))}><option value="">—</option>{catsGang.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
+        <button onClick={add} style={{fontWeight:700}}>+</button>
+      </div>}
     </>;
   }
 
@@ -428,6 +553,40 @@ function Main({cu,setCu,onLogout}){
     </>;
   }
 
+  // Apparts gestion complète (Database)
+  async function addAppart(){
+    if(!nAp.nom)return;
+    const payload={
+      nom:nAp.nom,
+      categorie:nAp.categorie||"recel",
+      coffre:0,
+      stock:0,
+      max_coffre:+nAp.max_coffre||10000,
+      max_stock:+nAp.max_stock||100,
+      code:nAp.code||""
+    };
+    const {data}=await sb.from("apparts").insert(payload).select().single();
+    if(data)setApparts(p=>[...p,data]);
+    setNAp({nom:"",categorie:"recel",max_coffre:"",max_stock:"",code:""});
+  }
+  async function delAppart(id){
+    if(!confirm("Supprimer cet appart définitivement ?"))return;
+    await sb.from("apparts").delete().eq("id",id);
+    setApparts(p=>p.filter(a=>a.id!==id));
+  }
+  async function saveAppartEdit(){
+    if(!eApId)return;
+    const f={
+      nom:eApV.nom,
+      categorie:eApV.categorie,
+      max_coffre:+eApV.max_coffre||0,
+      max_stock:+eApV.max_stock||0,
+      code:eApV.code||""
+    };
+    await updateAppart(eApId,f);
+    setEApId(null);
+  }
+
   if(loading) return <div style={{background:C.bg,minHeight:"100vh"}}><style>{G}</style><Loader/></div>;
 
   const blDep = blanch?new Date(blanch.depot_at):null;
@@ -445,29 +604,51 @@ function Main({cu,setCu,onLogout}){
     <div style={{padding:"1.25rem",maxWidth:740,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text}}>
       <style>{G}</style>
 
-      <input ref={fileRefPM} type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"pm")} style={{display:"none"}}/>
-      <input ref={fileRefG}  type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"gang")} style={{display:"none"}}/>
+      <input ref={fileRefPM}  type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_pm")} style={{display:"none"}}/>
+      <input ref={fileRefG}   type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_gang")} style={{display:"none"}}/>
+      <input ref={fileRefPMs} type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"pms")} style={{display:"none"}}/>
 
       {importDlg&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"1rem"}} onClick={()=>setImportDlg(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:420,width:"100%"}}>
-            <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>Importer items {importDlg.target==="pm"?"PM":"gangs"}</div>
-            <div style={{fontSize:12,color:C.muted,marginBottom:14}}>{importDlg.items.length} ligne{importDlg.items.length>1?"s":""} détectée{importDlg.items.length>1?"s":""} dans le fichier.</div>
-            <div style={{maxHeight:140,overflowY:"auto",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:8,padding:8,marginBottom:14,fontSize:12}}>
-              {importDlg.items.slice(0,8).map((it,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"2px 4px"}}><span>{it.nom}</span><span style={{color:C.muted}}>{fmt(it.prix)}</span></div>)}
-              {importDlg.items.length>8&&<div style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:4}}>… et {importDlg.items.length-8} de plus</div>}
+          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:440,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>
+              Importer {importDlg.target==="items_pm"?"items PM":importDlg.target==="items_gang"?"items gangs":"petites mains"}
             </div>
-            <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Mode d'import :</div>
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
-              <button onClick={()=>confirmImport("append")} style={{padding:"10px 14px",textAlign:"left",background:C.surfaceAlt,border:"1px solid "+C.border}}>
-                <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>Ajouter à l'existant</div>
-                <div style={{fontSize:11,color:C.muted}}>Les nouveaux items sont ajoutés. L'existant est conservé.</div>
-              </button>
-              <button onClick={()=>{if(confirm("Supprimer TOUS les items actuels avant import ?"))confirmImport("replace");}} style={{padding:"10px 14px",textAlign:"left",background:"rgba(224,85,85,0.08)",border:"1px solid rgba(224,85,85,0.3)"}}>
-                <div style={{fontWeight:700,fontSize:13,marginBottom:2,color:C.red}}>Écraser tout</div>
-                <div style={{fontSize:11,color:C.muted}}>Supprime tous les items actuels avant import.</div>
-              </button>
+            <div style={{fontSize:12,color:C.muted,marginBottom:14}}>
+              {importDlg.items.length} ligne{importDlg.items.length>1?"s":""} valide{importDlg.items.length>1?"s":""} détectée{importDlg.items.length>1?"s":""}
+              {importDlg.skipped&&importDlg.skipped.length>0&&" · "+importDlg.skipped.length+" ignorée"+(importDlg.skipped.length>1?"s":"")}
             </div>
+            {importDlg.items.length>0&&(
+              <div style={{maxHeight:140,overflowY:"auto",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:8,padding:8,marginBottom:10,fontSize:12}}>
+                {importDlg.items.slice(0,8).map((it,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"2px 4px"}}>
+                  <span>{it.nom}</span>
+                  <span style={{color:C.muted}}>{importDlg.target==="pms"?(catsPM.find(c=>c.id===it.categorie_id)?.nom||""):fmt(it.prix)}</span>
+                </div>)}
+                {importDlg.items.length>8&&<div style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:4}}>… et {importDlg.items.length-8} de plus</div>}
+              </div>
+            )}
+            {importDlg.skipped&&importDlg.skipped.length>0&&(
+              <div style={{background:"rgba(212,146,10,0.08)",border:"1px solid rgba(212,146,10,0.3)",borderRadius:6,padding:"8px 10px",marginBottom:12,fontSize:11,color:C.amber}}>
+                ⚠ {importDlg.skipped.length} ligne{importDlg.skipped.length>1?"s":""} ignorée{importDlg.skipped.length>1?"s":""} — catégorie inconnue :
+                <div style={{marginTop:4,color:C.text}}>
+                  {[...new Set(importDlg.skipped.map(s=>s.catName))].slice(0,5).map((c,i)=><span key={i} style={{display:"inline-block",margin:"2px 4px 0 0",padding:"1px 6px",background:C.surfaceAlt,borderRadius:3,fontFamily:"monospace"}}>{c||"(vide)"}</span>)}
+                </div>
+                <div style={{marginTop:6,fontSize:10,color:C.muted}}>Crée d'abord ces catégories dans "Catégories PM" puis relance l'import.</div>
+              </div>
+            )}
+            {importDlg.items.length>0&&(<>
+              <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Mode d'import :</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+                <button onClick={()=>confirmImport("append")} style={{padding:"10px 14px",textAlign:"left",background:C.surfaceAlt,border:"1px solid "+C.border}}>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>Ajouter à l'existant</div>
+                  <div style={{fontSize:11,color:C.muted}}>Les nouvelles lignes sont ajoutées. L'existant est conservé.</div>
+                </button>
+                <button onClick={()=>{if(confirm("Supprimer TOUT avant import ?"))confirmImport("replace");}} style={{padding:"10px 14px",textAlign:"left",background:"rgba(224,85,85,0.08)",border:"1px solid rgba(224,85,85,0.3)"}}>
+                  <div style={{fontWeight:700,fontSize:13,marginBottom:2,color:C.red}}>Écraser tout</div>
+                  <div style={{fontSize:11,color:C.muted}}>Supprime tout avant import.</div>
+                </button>
+              </div>
+            </>)}
             <div style={{display:"flex",justifyContent:"flex-end"}}>
               <button onClick={()=>setImportDlg(null)}>Annuler</button>
             </div>
@@ -591,15 +772,18 @@ function Main({cu,setCu,onLogout}){
             <div><div style={S.lbl}>Date</div><input type="date" style={S.inp} value={tx.date} onChange={e=>setTx(f=>({...f,date:e.target.value}))}/></div>
             <div><div style={S.lbl}>Note</div><input type="text" style={S.inp} placeholder="Optionnel" value={tx.note} onChange={e=>setTx(f=>({...f,note:e.target.value}))}/></div>
           </div>
+
+          {/* ── Sections d'items pliables ── */}
           <div style={{marginBottom:14}}>
-            <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>{"Objets"+(aPct>0?" · "+aPct+"%":"")}</div>
-            {aItems.map(it=>{const isGO=itemsG.some(x=>x.id===it.id);return(
-              <div key={it.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,paddingBottom:6,borderBottom:"1px solid "+C.border}}>
-                <span style={{flex:1,fontSize:13}}>{it.nom}{isGO&&<span style={{fontSize:10,marginLeft:5,padding:"1px 6px",borderRadius:4,background:"rgba(212,132,10,0.12)",color:C.amber,border:"1px solid rgba(212,132,10,0.3)",fontWeight:700}}>gang</span>}<span style={{fontSize:11,color:C.muted,marginLeft:4}}>({fmt(it.prix)})</span></span>
-                <input type="number" min="0" placeholder="0" style={{width:72,textAlign:"center"}} value={tx.qtes[it.id]||""} onChange={e=>setTx(f=>({...f,qtes:{...f.qtes,[it.id]:e.target.value}}))}/>
-              </div>
-            );})}
+            {tx.dest==="pm"
+              ? <ItemsSection title="Objets" pct={aPct} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte}/>
+              : <>
+                  <ItemsSection title="Objets classiques" pct={aPct} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte}/>
+                  <ItemsSection title="Objets gang" pct={aPct} items={itemsG} qtes={tx.qtes} onChangeQte={setQte} accent={C.amber}/>
+                </>
+            }
           </div>
+
           <div style={{borderTop:"1px solid "+C.border,paddingTop:12,marginBottom:14}}>
             <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>{"Liasses"+(aLiasse>0?" · "+aLiasse+"$ / liasse":"")}</div>
             <input type="number" min="0" placeholder="0 liasses" style={{width:140}} value={tx.liasseQte} onChange={e=>setTx(f=>({...f,liasseQte:e.target.value}))}/>
@@ -668,6 +852,7 @@ function Main({cu,setCu,onLogout}){
         </div>
       )}
 
+      {/* APPARTS — Vue grille (filtres conservés). Membre = coffre+stock, Admin = coffre+stock + cat */}
       {tab==="apparts"&&(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
@@ -678,17 +863,16 @@ function Main({cu,setCu,onLogout}){
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               <span style={{fontSize:11,color:C.muted}}>Trier :</span>
               {["coffre","stock"].map(k=>{const a=apSort.key===k;const ar=a?(apSort.dir===1?"↑":"↓"):"↕";return <button key={k} onClick={()=>setApSort(s=>s.key===k?{key:k,dir:s.dir*-1}:{key:k,dir:-1})} style={{fontSize:11,padding:"3px 8px",color:a?C.text:C.muted,background:a?C.surfaceAlt:"transparent",border:"1px solid "+(a?C.border:"transparent"),borderRadius:6}}>{k.charAt(0).toUpperCase()+k.slice(1)} {ar}</button>;})}
-              {isAdmin&&<button onClick={async()=>{const{data}=await sb.from("apparts").insert({nom:"Nouvel appart",coffre:0,stock:0,max_coffre:10000,max_stock:100,categorie:"recel",code:""}).select().single();if(data)setApparts(p=>[...p,data]);}} style={{fontWeight:700,marginLeft:4}}>+ Ajouter</button>}
             </div>
           </div>
+          {!isAdmin&&<div style={{fontSize:11,color:C.muted,marginBottom:10,fontStyle:"italic"}}>💡 Tu peux modifier le coffre et le stock. Pour le reste (nom, catégorie, code, ajout), va dans Database (admin).</div>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             {sortedAp.map(a=>{
               const ac=getCat(a.categorie);
               return(
                 <div key={a.id} style={{...card,borderLeft:"3px solid "+ac.color,padding:"12px 14px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                    <input value={a.nom} onChange={e=>updateAppart(a.id,{nom:e.target.value})}
-                      style={{width:"38%",fontWeight:700,fontSize:13,border:"none!important",background:"transparent!important",color:C.text,padding:"0!important",boxShadow:"none!important",outline:"none",flexShrink:0}}/>
+                    <span style={{flex:"0 0 38%",fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.nom}</span>
                     {a.code?(
                       <button onClick={()=>{navigator.clipboard?.writeText(a.code);setCopied(a.id);setTimeout(()=>setCopied(null),1500);}}
                         style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,padding:"3px 10px",background:C.surfaceAlt,border:"1px solid "+(copied===a.id?C.green:C.border),borderRadius:6,color:copied===a.id?C.green:C.muted,transition:"all .2s",minWidth:0}}>
@@ -699,10 +883,9 @@ function Main({cu,setCu,onLogout}){
                       <div style={{flex:1,padding:"3px 10px",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,fontSize:11,color:C.muted,fontStyle:"italic"}}>pas de code</div>
                     )}
                   </div>
-                  {isAdmin
-                    ?<div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>{APPART_CATS.map(c=><button key={c.id} onClick={()=>updateAppart(a.id,{categorie:c.id})} style={{fontSize:10,padding:"2px 8px",fontWeight:a.categorie===c.id?700:400,background:a.categorie===c.id?c.bg:"transparent",color:a.categorie===c.id?c.color:C.muted,border:"1px solid "+(a.categorie===c.id?c.color+"66":"transparent"),borderRadius:20}}>{c.label}</button>)}</div>
-                    :<div style={{marginBottom:8}}><span style={{fontSize:10,padding:"2px 8px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span></div>
-                  }
+                  <div style={{marginBottom:8}}>
+                    <span style={{fontSize:10,padding:"2px 8px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span>
+                  </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <div><div style={{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Coffre</div><input type="number" value={a.coffre} onChange={e=>updateAppart(a.id,{coffre:+e.target.value})} style={{width:"100%",fontSize:13,marginBottom:5,padding:"5px 8px"}}/><Bar val={a.coffre} max={a.max_coffre}/></div>
                     <div><div style={{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Stock</div><input type="number" value={a.stock} onChange={e=>updateAppart(a.id,{stock:+e.target.value})} style={{width:"100%",fontSize:13,marginBottom:5,padding:"5px 8px"}}/><Bar val={a.stock} max={a.max_stock}/></div>
@@ -717,39 +900,67 @@ function Main({cu,setCu,onLogout}){
       {tab==="database"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={card}><div style={S.sec}>Catégories PM</div><CatTable cats={catsPM} setCats={setCatsPM} table="categories_pm" eId={eCPM} setEId={setECPM} nc={nCPM} setNc={setNCPM}/></div>
-          <div style={card}><div style={S.sec}>Petites mains</div><PList list={pms} setList={setPMs} cats={catsPM} table="pms" eId={ePM} setEId={setEPM} ni={nPM} setNi={setNPM}/></div>
+          <div style={card}><div style={S.sec}>Petites mains{!isAdmin&&" · lecture seule"}</div><PMList/></div>
           <div style={card}><div style={S.sec}>Catégories gangs</div><CatTable cats={catsGang} setCats={setCatsGang} table="categories_gang" eId={eCG} setEId={setECG} nc={nCG} setNc={setNCG}/></div>
-          <div style={card}><div style={S.sec}>Gangs</div><PList list={gangs} setList={setGangs} cats={catsGang} table="gangs" eId={eGa} setEId={setEGa} ni={nGa} setNi={setNGa}/></div>
-          <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="pm"/></div>
-          <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="gang"/></div>
+          <div style={card}><div style={S.sec}>Gangs{!isAdmin&&" · lecture seule"}</div><GangList/></div>
+          <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm"/></div>
+          <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="items_gang"/></div>
+
+          {/* Apparts — gestion complète admin only */}
           {isAdmin&&(
             <div style={card}>
-              <div style={S.sec}>Apparts — capacités & codes</div>
-              {apparts.map(a=>(
-                <div key={a.id} style={{marginBottom:10,paddingBottom:10,borderBottom:"1px solid "+C.border}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                    <span style={{flex:1,fontWeight:700,fontSize:13}}>{a.nom}</span>
-                    {eCapId===a.id
-                      ?<><button onClick={async()=>{const f={max_coffre:+eCapV.max_coffre||a.max_coffre,max_stock:+eCapV.max_stock||a.max_stock,code:eCapV.code||""};await updateAppart(a.id,f);setECapId(null);}} style={{color:C.green,fontWeight:700}}>OK</button><button onClick={()=>setECapId(null)}>✕</button></>
-                      :<button onClick={()=>{setECapId(a.id);setECapV({max_coffre:a.max_coffre,max_stock:a.max_stock,code:a.code||""});}}>Modifier</button>
-                    }
+              <div style={S.sec}>Apparts — gestion complète</div>
+              {apparts.map(a=>{
+                const ac=getCat(a.categorie);
+                const editing=eApId===a.id;
+                return (
+                  <div key={a.id} style={{marginBottom:10,paddingBottom:10,borderBottom:"1px solid "+C.border}}>
+                    {editing?(
+                      <div style={{background:"rgba(74,158,222,0.05)",borderRadius:8,padding:10,border:"1px solid rgba(74,158,222,0.2)"}}>
+                        <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr",gap:10,marginBottom:8}}>
+                          <div><div style={S.lbl}>Nom</div><input style={S.inp} value={eApV.nom||""} onChange={e=>setEApV(v=>({...v,nom:e.target.value}))}/></div>
+                          <div><div style={S.lbl}>Catégorie</div><select style={S.inp} value={eApV.categorie||"recel"} onChange={e=>setEApV(v=>({...v,categorie:e.target.value}))}>{APPART_CATS.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
+                          <div><div style={S.lbl}>Max coffre ($)</div><input type="number" style={S.inp} value={eApV.max_coffre||""} onChange={e=>setEApV(v=>({...v,max_coffre:e.target.value}))}/></div>
+                          <div><div style={S.lbl}>Max stock (Kg)</div><input type="number" style={S.inp} value={eApV.max_stock||""} onChange={e=>setEApV(v=>({...v,max_stock:e.target.value}))}/></div>
+                          <div><div style={S.lbl}>Code appart</div><input type="text" style={S.inp} value={eApV.code||""} onChange={e=>setEApV(v=>({...v,code:e.target.value}))} placeholder="optionnel"/></div>
+                        </div>
+                        <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+                          <button onClick={()=>setEApId(null)}>Annuler</button>
+                          <button onClick={saveAppartEdit} style={{color:C.green,fontWeight:700}}>Enregistrer</button>
+                        </div>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                        <span style={{flex:"1 1 120px",fontWeight:700,fontSize:13,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.nom}</span>
+                        <span style={{fontSize:10,padding:"2px 8px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span>
+                        <span style={{fontSize:11,color:C.muted}}>Coffre <strong style={{color:C.text}}>{fmt(a.max_coffre)}</strong></span>
+                        <span style={{fontSize:11,color:C.muted}}>Stock <strong style={{color:C.text}}>{fmtKg(a.max_stock)}</strong></span>
+                        <span style={{fontSize:11,color:C.muted,fontFamily:"monospace"}}>{a.code||"—"}</span>
+                        <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
+                          <button onClick={()=>{setEApId(a.id);setEApV({nom:a.nom,categorie:a.categorie,max_coffre:a.max_coffre,max_stock:a.max_stock,code:a.code||""});}} style={{fontSize:11,padding:"3px 8px"}}>Modifier</button>
+                          <button onClick={()=>delAppart(a.id)} style={{fontSize:11,padding:"3px 8px",color:C.red}}>×</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {eCapId===a.id
-                    ?<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-                      <div><div style={S.lbl}>Max coffre ($)</div><input type="number" style={S.inp} value={eCapV.max_coffre} onChange={e=>setECapV(v=>({...v,max_coffre:e.target.value}))}/></div>
-                      <div><div style={S.lbl}>Max stock (Kg)</div><input type="number" style={S.inp} value={eCapV.max_stock} onChange={e=>setECapV(v=>({...v,max_stock:e.target.value}))}/></div>
-                      <div><div style={S.lbl}>Code appart</div><input type="text" style={S.inp} value={eCapV.code} onChange={e=>setECapV(v=>({...v,code:e.target.value}))}/></div>
-                    </div>
-                    :<div style={{fontSize:12,color:C.muted,display:"flex",gap:16}}>
-                      <span>Max coffre : <strong style={{color:C.text}}>{fmt(a.max_coffre)}</strong></span>
-                      <span>Max stock : <strong style={{color:C.text}}>{fmtKg(a.max_stock)}</strong></span>
-                      <span>Code : <strong style={{color:C.text,fontFamily:"monospace"}}>{a.code||"—"}</strong></span>
-                    </div>
-                  }
+                );
+              })}
+              <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed "+C.border}}>
+                <div style={S.lbl}>Ajouter un nouvel appart</div>
+                <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr auto",gap:6,alignItems:"end",marginTop:6}}>
+                  <input style={S.inp} placeholder="Nom" value={nAp.nom} onChange={e=>setNAp(f=>({...f,nom:e.target.value}))}/>
+                  <select style={S.inp} value={nAp.categorie} onChange={e=>setNAp(f=>({...f,categorie:e.target.value}))}>{APPART_CATS.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</select>
+                  <input type="number" style={S.inp} placeholder="Max coffre" value={nAp.max_coffre} onChange={e=>setNAp(f=>({...f,max_coffre:e.target.value}))}/>
+                  <input type="number" style={S.inp} placeholder="Max stock" value={nAp.max_stock} onChange={e=>setNAp(f=>({...f,max_stock:e.target.value}))}/>
+                  <input style={S.inp} placeholder="Code" value={nAp.code} onChange={e=>setNAp(f=>({...f,code:e.target.value}))}/>
+                  <button onClick={addAppart} style={{fontWeight:700,color:C.green}}>+</button>
                 </div>
-              ))}
+              </div>
             </div>
           )}
+
           {isAdmin&&(
             <div style={card}>
               <div style={S.sec}>Membres — comptes</div>
