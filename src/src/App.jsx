@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = "https://VOTRE_URL.supabase.co";
-const SUPABASE_ANON_KEY = "VOTRE_ANON_KEY";
+const SUPABASE_URL = "https://ppaokymwkazzwwdzjmdb.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_C7P3LpTUQ4A8JGKiF3fThQ_vyRvj3oD";
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const fmt    = n => Math.round(+n||0).toLocaleString("fr-FR")+"$";
