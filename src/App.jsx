@@ -14,6 +14,7 @@ const getCat = id => APPART_CATS.find(c=>c.id===id)||APPART_CATS[0];
 
 const fmt   = n => Math.round(+n||0).toLocaleString("fr-FR")+"$";
 const fmtKg = n => Math.round(+n||0)+" Kg";
+const fmtKgD = n => (Math.round((+n||0)*100)/100).toFixed(2)+" Kg";
 const pv    = (v,max) => Math.min(100,Math.round((v/Math.max(1,max))*100));
 const today = () => new Date().toISOString().slice(0,10);
 const ago   = n => { const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); };
@@ -110,7 +111,7 @@ function parseCSV(text){
 }
 function toCSVItems(items){
   const esc=v=>{const s=String(v??"");return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-  return "nom,prix\n"+items.map(it=>esc(it.nom)+","+esc(it.prix)).join("\n");
+  return "nom,prix,poids\n"+items.map(it=>esc(it.nom)+","+esc(it.prix)+","+esc(it.poids||0)).join("\n");
 }
 function toCSVPMs(pms,cats){
   const esc=v=>{const s=String(v??"");return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
@@ -131,12 +132,14 @@ function downloadCSV(filename,content){
 function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
   const [open,setOpen]=useState(false);
   const [q,setQ]=useState("");
+  // On filtre les items masqués (visible=false explicitement)
+  const visibleItems=useMemo(()=>items.filter(it=>it.visible!==false),[items]);
   const filtered=useMemo(()=>{
-    if(!q.trim())return items;
+    if(!q.trim())return visibleItems;
     const s=q.toLowerCase();
-    return items.filter(it=>it.nom.toLowerCase().includes(s));
-  },[items,q]);
-  const selCount=useMemo(()=>items.reduce((n,it)=>n+((+(qtes[it.id])||0)>0?1:0),0),[items,qtes]);
+    return visibleItems.filter(it=>it.nom.toLowerCase().includes(s));
+  },[visibleItems,q]);
+  const selCount=useMemo(()=>visibleItems.reduce((n,it)=>n+((+(qtes[it.id])||0)>0?1:0),0),[visibleItems,qtes]);
   const accentColor=accent||C.text;
   const bgHeader=accent?"rgba(212,132,10,0.08)":C.surfaceAlt;
   const borderHeader=accent?"rgba(212,132,10,0.25)":C.border;
@@ -155,7 +158,7 @@ function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
           {selCount>0&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:4,fontWeight:600,background:"rgba(61,191,143,0.15)",color:C.green,border:"1px solid rgba(61,191,143,0.3)"}}>{selCount} sélectionné{selCount>1?"s":""}</span>}
         </div>
         <span style={{fontSize:11,color:C.muted}}>
-          {open?(filtered.length+" / "+items.length+" items"):(items.length+" items")}
+          {open?(filtered.length+" / "+visibleItems.length+" items"):(visibleItems.length+" items")}
         </span>
       </div>
       {open&&(
@@ -167,7 +170,10 @@ function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
               ?<div style={{textAlign:"center",padding:30,color:C.muted,fontSize:11,fontStyle:"italic"}}>Aucun item trouvé</div>
               :filtered.map(it=>(
                 <div key={it.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
-                  <span style={{flex:1,fontSize:13,color:C.text}}>{it.nom}<span style={{fontSize:11,color:C.muted,marginLeft:5}}>({fmt(it.prix)})</span></span>
+                  <span style={{flex:1,fontSize:13,color:C.text}}>
+                    {it.nom}
+                    <span style={{fontSize:11,color:C.muted,marginLeft:5}}>({fmt(it.prix)}{it.poids>0&&" · "+fmtKgD(it.poids)})</span>
+                  </span>
                   <input type="number" min="0" placeholder="0" value={qtes[it.id]||""} onChange={e=>onChangeQte(it.id,e.target.value)}
                     style={{width:72,textAlign:"center"}}/>
                 </div>
@@ -266,13 +272,18 @@ function Main({cu,setCu,onLogout}){
   const aPct     = tx.dest==="pm"?(selCatPM?selCatPM.pct_objets:0):(selCatG?selCatG.pct_objets:0);
   const aLiasse  = tx.dest==="pm"?(selCatPM?selCatPM.taux_liasse:0):(selCatG?selCatG.taux_liasse:0);
 
-  // Items utilisés pour le calcul (PM = items_pm, Gang = items_pm + items_gang)
   const aItems   = tx.dest==="gang"?[...itemsPM,...itemsG]:itemsPM;
 
   const totObj=useMemo(()=>{
     if(!aPct)return 0;
     return aItems.reduce((s,it)=>s+it.prix*(+(tx.qtes[it.id])||0)*(aPct/100),0);
   },[tx.qtes,aPct,aItems]);
+
+  // Poids total = somme (poids_unitaire × quantité) — pas de pondération, c'est le poids physique réel
+  const totPoids=useMemo(()=>{
+    return aItems.reduce((s,it)=>s+(+(it.poids)||0)*(+(tx.qtes[it.id])||0),0);
+  },[tx.qtes,aItems]);
+
   const totLia  = aLiasse*(+(tx.liasseQte)||0);
   const totArg  = tx.dest==="pm"?Math.round((+(tx.argentSale)||0)*0.4):0;
   const txTotal = Math.round(totObj)+totLia+totArg;
@@ -286,7 +297,7 @@ function Main({cu,setCu,onLogout}){
     if(tx.dest==="gang"&&!tx.gangId)return;
     if(!totObj&&!totLia&&!totArg)return;
     const types=[]; const det={};
-    if(totObj>0){types.push("objets");det.lignes=aItems.filter(it=>+(tx.qtes[it.id]||0)>0).map(it=>({nom:it.nom,prix:it.prix,qte:+(tx.qtes[it.id]),sous_total:it.prix*(+(tx.qtes[it.id]))*(aPct/100)}));}
+    if(totObj>0){types.push("objets");det.lignes=aItems.filter(it=>+(tx.qtes[it.id]||0)>0).map(it=>({nom:it.nom,prix:it.prix,qte:+(tx.qtes[it.id]),sous_total:it.prix*(+(tx.qtes[it.id]))*(aPct/100),poids:(+(it.poids)||0)*(+(tx.qtes[it.id]))}));}
     if(totLia>0){types.push("liasses");det.liasse_qte=+(tx.liasseQte);det.taux_liasse=aLiasse;det.valeur_face=70*(+(tx.liasseQte));}
     if(totArg>0&&tx.dest==="pm"){types.push("argent");det.argent_sale=+(tx.argentSale);}
     const mb=members.find(m=>m.id===tx.membreId)||null;
@@ -360,12 +371,11 @@ function Main({cu,setCu,onLogout}){
   const [nCG,setNCG]=useState({nom:"",pct_objets:"",taux_liasse:""});   const [eCG,setECG]=useState(null);
   const [nPM,setNPM]=useState({nom:"",categorie_id:""});   const [ePM,setEPM]=useState(null);
   const [nGa,setNGa]=useState({nom:"",categorie_id:""});   const [eGa,setEGa]=useState(null);
-  const [nIPM,setNIPM]=useState({nom:"",prix:""});  const [eIPM,setEIPM]=useState(null);
-  const [nIG,setNIG]=useState({nom:"",prix:""});    const [eIG,setEIG]=useState(null);
+  const [nIPM,setNIPM]=useState({nom:"",prix:"",poids:""});  const [eIPM,setEIPM]=useState(null);
+  const [nIG,setNIG]=useState({nom:"",prix:"",poids:""});    const [eIG,setEIG]=useState(null);
   const [nBM,setNBM]=useState({nom:"",solde:""});
   const [nU,setNU]=useState({nom:"",code:"",role:"membre"});
 
-  // Apparts dans Database (édition complète)
   const [eApId,setEApId]=useState(null);
   const [eApV,setEApV]=useState({});
   const [nAp,setNAp]=useState({nom:"",categorie:"recel",max_coffre:"",max_stock:"",code:""});
@@ -387,11 +397,11 @@ function Main({cu,setCu,onLogout}){
     setTimeout(()=>setPwdMsg(null),3500);
   }
 
-  // ── Imports CSV ──────────────────────────────────────────
-  const fileRefPM=useRef(null);     // items_pm
-  const fileRefG=useRef(null);      // items_gang
-  const fileRefPMs=useRef(null);    // pms (petites mains)
+  const fileRefPM=useRef(null);
+  const fileRefG=useRef(null);
+  const fileRefPMs=useRef(null);
   const [importDlg,setImportDlg]=useState(null);
+  const [importErr,setImportErr]=useState(null);
 
   function triggerImport(target){
     const r=target==="items_pm"?fileRefPM:target==="items_gang"?fileRefG:fileRefPMs;
@@ -403,11 +413,10 @@ function Main({cu,setCu,onLogout}){
     if(!file)return;
     const text=await file.text();
     const rows=parseCSV(text);
-    if(!rows.length){alert("Fichier vide");return;}
-    const first=rows[0];
+    if(!rows.length){setImportErr({target,msg:"Le fichier est vide."});return;}
 
     if(target==="pms"){
-      // PM : nom,categorie
+      const first=rows[0];
       const hasHeader=first.length>=2 && /nom|name/i.test(first[0]);
       const lines=hasHeader?rows.slice(1):rows;
       const data=[];
@@ -420,15 +429,31 @@ function Main({cu,setCu,onLogout}){
         if(!cat){skipped.push({nom,catName});return;}
         data.push({nom,categorie_id:cat.id});
       });
-      if(!data.length&&!skipped.length){alert("Aucune ligne valide trouvée");return;}
+      if(!data.length&&!skipped.length){setImportErr({target,msg:"Aucune ligne valide trouvée."});return;}
       setImportDlg({target,items:data,skipped});
     } else {
-      // items_pm / items_gang : nom,prix
-      const hasHeader=first.length>=2 && isNaN(parseFloat(first[1]));
-      const data=(hasHeader?rows.slice(1):rows)
-        .map(r=>({nom:(r[0]||"").trim(),prix:Math.round(parseFloat((r[1]||"0").replace(",","."))||0)}))
+      // items_pm / items_gang : nom,prix,poids — 3 colonnes obligatoires
+      const first=rows[0];
+      const hasHeader = first.length>=2 && (isNaN(parseFloat(first[1])) || /nom|name/i.test(first[0]));
+      const dataRows = hasHeader ? rows.slice(1) : rows;
+
+      // Vérification : chaque ligne doit avoir au moins 3 colonnes
+      if(dataRows.length===0){setImportErr({target,msg:"Aucune ligne de données après l'en-tête."});return;}
+      const missingPoids = dataRows.some(r => r.length < 3);
+      if(missingPoids){
+        setImportErr({target,msg:"Colonne \"poids\" manquante. Le format CSV doit contenir 3 colonnes : nom, prix, poids (en Kg)."});
+        return;
+      }
+
+      const data=dataRows
+        .map(r=>({
+          nom:(r[0]||"").trim(),
+          prix:Math.round(parseFloat((r[1]||"0").replace(",","."))||0),
+          poids:Math.round(parseFloat((r[2]||"0").replace(",","."))*1000)/1000||0,
+          visible:true
+        }))
         .filter(r=>r.nom&&r.prix>=0);
-      if(!data.length){alert("Aucune ligne valide trouvée");return;}
+      if(!data.length){setImportErr({target,msg:"Aucune ligne valide trouvée."});return;}
       setImportDlg({target,items:data,skipped:[]});
     }
   }
@@ -451,6 +476,13 @@ function Main({cu,setCu,onLogout}){
     if(target==="items_pm"){downloadCSV("items_pm.csv",toCSVItems(itemsPM));return;}
     if(target==="items_gang"){downloadCSV("items_gang.csv",toCSVItems(itemsG));return;}
     if(target==="pms"){downloadCSV("petites_mains.csv",toCSVPMs(pms,catsPM));return;}
+  }
+
+  // ── Toggle visibilité d'un item (admin only) ──
+  async function toggleItemVisibility(item,table,setItems){
+    const newVal=!(item.visible!==false);
+    await sb.from(table).update({visible:newVal}).eq("id",item.id);
+    setItems(is=>is.map(x=>x.id===item.id?{...x,visible:newVal}:x));
   }
 
   const TABS=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
@@ -484,13 +516,10 @@ function Main({cu,setCu,onLogout}){
     async function add(){if(!nPM.nom||!nPM.categorie_id)return;const{data}=await sb.from("pms").insert({nom:nPM.nom,categorie_id:nPM.categorie_id}).select().single();if(data)setPMs(p=>[...p,data]);setNPM({nom:"",categorie_id:""});}
     async function del(id){await sb.from("pms").delete().eq("id",id);setPMs(ps=>ps.filter(x=>x.id!==id));}
     return <>
-      {isAdmin&&<div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
         <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
-        <button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>
-      </div>}
-      {!isAdmin&&<div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-        <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
-      </div>}
+        {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
+      </div>
       {pms.map(p=>(
         <div key={p.id} style={S.row}>
           {isAdmin&&ePM===p.id
@@ -528,32 +557,89 @@ function Main({cu,setCu,onLogout}){
     </>;
   }
 
+  // ── Liste d'items avec œil + poids ──
   function IList({items,setItems,table,eId,setEId,ni,setNi,canEdit,target}){
-    async function save(it){await sb.from(table).update({nom:it.nom,prix:it.prix}).eq("id",it.id);setItems(is=>is.map(x=>x.id===it.id?it:x));setEId(null);}
-    async function add(){if(!ni.nom||!ni.prix)return;const{data}=await sb.from(table).insert({nom:ni.nom,prix:+ni.prix}).select().single();if(data)setItems(p=>[...p,data]);setNi({nom:"",prix:""});}
+    async function save(it){
+      await sb.from(table).update({nom:it.nom,prix:it.prix,poids:+it.poids||0}).eq("id",it.id);
+      setItems(is=>is.map(x=>x.id===it.id?it:x));
+      setEId(null);
+    }
+    async function add(){
+      if(!ni.nom||!ni.prix)return;
+      const payload={nom:ni.nom,prix:+ni.prix,poids:+ni.poids||0,visible:true};
+      const{data}=await sb.from(table).insert(payload).select().single();
+      if(data)setItems(p=>[...p,data]);
+      setNi({nom:"",prix:"",poids:""});
+    }
     async function del(id){await sb.from(table).delete().eq("id",id);setItems(is=>is.filter(x=>x.id!==id));}
+
+    const visibleCount=items.filter(it=>it.visible!==false).length;
+
     return <>
-      <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
-        <button onClick={()=>exportCSV(target)} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
-        {canEdit&&<button onClick={()=>triggerImport(target)} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
-      </div>
-      {items.map(it=>(
-        <div key={it.id} style={S.row}>
-          {canEdit&&eId===it.id
-            ?<><input style={{flex:1}} value={it.nom} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,nom:e.target.value}:x))}/><input type="number" style={{width:80}} value={it.prix} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,prix:+e.target.value}:x))}/><button onClick={()=>save(it)} style={{color:C.green,fontWeight:700}}>OK</button></>
-            :<><span style={{flex:1,fontSize:14,color:C.text}}>{it.nom}</span><span style={{fontSize:13,color:C.muted,minWidth:60,textAlign:"right"}}>{fmt(it.prix)}</span>{canEdit&&<div style={{display:"flex",gap:4}}><button onClick={()=>setEId(it.id)}>Mod.</button><button onClick={()=>del(it.id)} style={{color:C.red}}>×</button></div>}</>
-          }
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <span style={{fontSize:11,color:C.muted}}>{visibleCount} visible{visibleCount>1?"s":""} / {items.length} total</span>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>exportCSV(target)} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
+          {canEdit&&<button onClick={()=>triggerImport(target)} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
         </div>
-      ))}
-      {canEdit&&<div style={{display:"flex",gap:8,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+      </div>
+
+      {/* En-tête colonnes */}
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"0 4px 6px",fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",borderBottom:"1px solid "+C.border,marginBottom:4}}>
+        <span style={{width:30}}></span>
+        <span style={{flex:1}}>Nom</span>
+        <span style={{width:70,textAlign:"right"}}>Prix</span>
+        <span style={{width:65,textAlign:"right"}}>Poids</span>
+        {canEdit&&<span style={{width:80}}></span>}
+      </div>
+
+      {items.map(it=>{
+        const visible=it.visible!==false;
+        return (
+          <div key={it.id} style={{...S.row,opacity:visible?1:0.45,transition:"opacity .25s",borderBottom:"1px solid #404040",paddingBottom:6,marginBottom:4}}>
+            {canEdit
+              ?<button onClick={()=>toggleItemVisibility(it,table,setItems)}
+                title={visible?"Masquer cet item dans Transactions":"Rendre visible dans Transactions"}
+                style={{width:30,padding:"3px 0",background:"transparent",border:"none",cursor:"pointer",color:visible?C.muted:C.red,fontSize:14,boxShadow:"none"}}>
+                {visible?"👁":"🚫"}
+              </button>
+              :<span style={{width:30,textAlign:"center",fontSize:13,color:visible?C.muted:C.red}}>{visible?"👁":"🚫"}</span>
+            }
+
+            {canEdit&&eId===it.id
+              ?<>
+                <input style={{flex:1}} value={it.nom} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,nom:e.target.value}:x))}/>
+                <input type="number" style={{width:70}} value={it.prix} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,prix:+e.target.value}:x))}/>
+                <input type="number" step="0.01" min="0" style={{width:65}} value={it.poids||0} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,poids:e.target.value}:x))}/>
+                <button onClick={()=>save(it)} style={{color:C.green,fontWeight:700}}>OK</button>
+              </>
+              :<>
+                <span style={{flex:1,fontSize:14,color:C.text}}>
+                  {it.nom}
+                  {!visible&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(224,85,85,0.15)",color:C.red,border:"1px solid rgba(224,85,85,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:6}}>masqué</span>}
+                </span>
+                <span style={{width:70,fontSize:13,color:C.muted,textAlign:"right"}}>{fmt(it.prix)}</span>
+                <span style={{width:65,fontSize:13,color:C.blue,textAlign:"right"}}>{fmtKgD(it.poids||0)}</span>
+                {canEdit&&<div style={{display:"flex",gap:4,width:80,justifyContent:"flex-end"}}>
+                  <button onClick={()=>setEId(it.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
+                  <button onClick={()=>del(it.id)} style={{color:C.red,fontSize:11,padding:"3px 8px"}}>×</button>
+                </div>}
+              </>
+            }
+          </div>
+        );
+      })}
+
+      {canEdit&&<div style={{display:"flex",gap:6,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+        <span style={{width:30}}></span>
         <input style={{flex:1}} placeholder="Nom" value={ni.nom} onChange={e=>setNi(f=>({...f,nom:e.target.value}))}/>
-        <input type="number" style={{width:80}} placeholder="Prix $" value={ni.prix} onChange={e=>setNi(f=>({...f,prix:e.target.value}))}/>
-        <button onClick={add} style={{fontWeight:700}}>+</button>
+        <input type="number" style={{width:70}} placeholder="Prix" value={ni.prix} onChange={e=>setNi(f=>({...f,prix:e.target.value}))}/>
+        <input type="number" step="0.01" min="0" style={{width:65}} placeholder="Poids" value={ni.poids} onChange={e=>setNi(f=>({...f,poids:e.target.value}))}/>
+        <button onClick={add} style={{fontWeight:700,color:C.green}}>+</button>
       </div>}
     </>;
   }
 
-  // Apparts gestion complète (Database)
   async function addAppart(){
     if(!nAp.nom)return;
     const payload={
@@ -608,9 +694,30 @@ function Main({cu,setCu,onLogout}){
       <input ref={fileRefG}   type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_gang")} style={{display:"none"}}/>
       <input ref={fileRefPMs} type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"pms")} style={{display:"none"}}/>
 
+      {importErr&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"1rem"}} onClick={()=>setImportErr(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:440,width:"100%",border:"1px solid rgba(224,85,85,0.4)",background:"rgba(224,85,85,0.05)"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:8,color:C.red}}>⛔ Import bloqué</div>
+            <div style={{fontSize:13,color:C.text,marginBottom:14,lineHeight:1.5}}>{importErr.msg}</div>
+            <div style={{background:"rgba(224,85,85,0.08)",border:"1px solid rgba(224,85,85,0.3)",borderRadius:6,padding:"10px 12px",fontSize:12,color:C.muted,marginBottom:14}}>
+              <strong style={{color:C.text}}>Format attendu :</strong>
+              <div style={{marginTop:6,fontFamily:"monospace",fontSize:11,color:C.text,background:C.surfaceAlt,padding:"6px 8px",borderRadius:4}}>
+                nom,prix,poids<br/>
+                Bague en or,145,0.05<br/>
+                Console de jeu,420,3.0
+              </div>
+              <div style={{marginTop:8,fontSize:11}}>Le poids est en Kg (décimales acceptées). Sépare les valeurs par des virgules.</div>
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end"}}>
+              <button onClick={()=>setImportErr(null)}>OK, j'ai compris</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {importDlg&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"1rem"}} onClick={()=>setImportDlg(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:440,width:"100%"}}>
+          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:460,width:"100%"}}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>
               Importer {importDlg.target==="items_pm"?"items PM":importDlg.target==="items_gang"?"items gangs":"petites mains"}
             </div>
@@ -619,12 +726,25 @@ function Main({cu,setCu,onLogout}){
               {importDlg.skipped&&importDlg.skipped.length>0&&" · "+importDlg.skipped.length+" ignorée"+(importDlg.skipped.length>1?"s":"")}
             </div>
             {importDlg.items.length>0&&(
-              <div style={{maxHeight:140,overflowY:"auto",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:8,padding:8,marginBottom:10,fontSize:12}}>
-                {importDlg.items.slice(0,8).map((it,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"2px 4px"}}>
-                  <span>{it.nom}</span>
-                  <span style={{color:C.muted}}>{importDlg.target==="pms"?(catsPM.find(c=>c.id===it.categorie_id)?.nom||""):fmt(it.prix)}</span>
-                </div>)}
-                {importDlg.items.length>8&&<div style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:4}}>… et {importDlg.items.length-8} de plus</div>}
+              <div style={{maxHeight:160,overflowY:"auto",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:8,padding:8,marginBottom:10,fontSize:12}}>
+                {importDlg.target!=="pms"&&(
+                  <div style={{display:"grid",gridTemplateColumns:"1.5fr 65px 70px",gap:6,fontSize:9,color:C.muted,textTransform:"uppercase",fontWeight:600,borderBottom:"1px solid "+C.border,paddingBottom:4,marginBottom:4}}>
+                    <span>Nom</span><span style={{textAlign:"right"}}>Prix</span><span style={{textAlign:"right"}}>Poids</span>
+                  </div>
+                )}
+                {importDlg.items.slice(0,10).map((it,i)=>(
+                  importDlg.target==="pms"
+                    ?<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"2px 4px"}}>
+                      <span>{it.nom}</span>
+                      <span style={{color:C.muted}}>{catsPM.find(c=>c.id===it.categorie_id)?.nom||""}</span>
+                    </div>
+                    :<div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 65px 70px",gap:6,padding:"2px 0"}}>
+                      <span>{it.nom}</span>
+                      <span style={{textAlign:"right",color:C.muted}}>{fmt(it.prix)}</span>
+                      <span style={{textAlign:"right",color:C.blue}}>{fmtKgD(it.poids)}</span>
+                    </div>
+                ))}
+                {importDlg.items.length>10&&<div style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:4}}>… et {importDlg.items.length-10} de plus</div>}
               </div>
             )}
             {importDlg.skipped&&importDlg.skipped.length>0&&(
@@ -773,7 +893,6 @@ function Main({cu,setCu,onLogout}){
             <div><div style={S.lbl}>Note</div><input type="text" style={S.inp} placeholder="Optionnel" value={tx.note} onChange={e=>setTx(f=>({...f,note:e.target.value}))}/></div>
           </div>
 
-          {/* ── Sections d'items pliables ── */}
           <div style={{marginBottom:14}}>
             {tx.dest==="pm"
               ? <ItemsSection title="Objets" pct={aPct} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte}/>
@@ -794,8 +913,19 @@ function Main({cu,setCu,onLogout}){
               <input type="number" min="0" placeholder="0$" style={{width:160}} value={tx.argentSale} onChange={e=>setTx(f=>({...f,argentSale:e.target.value}))}/>
             </div>
           )}
+
+          {/* TOTAL : $ | Kg côte à côte */}
           <div style={{borderTop:"1px solid "+C.border,paddingTop:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:3}}>Total à payer</div><div style={{fontSize:28,fontWeight:700,color:C.red}}>{fmt(txTotal)}</div></div>
+            <div>
+              <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:3}}>Total à payer</div>
+              <div style={{display:"flex",alignItems:"baseline",gap:14}}>
+                <div style={{fontSize:28,fontWeight:700,color:C.red}}>{fmt(txTotal)}</div>
+                {totPoids>0&&<>
+                  <div style={{width:1,alignSelf:"stretch",background:C.border}}/>
+                  <div style={{fontSize:18,fontWeight:600,color:C.blue}}>{fmtKgD(totPoids)}</div>
+                </>}
+              </div>
+            </div>
             <button onClick={submit} style={{padding:"11px 30px",fontWeight:700,fontSize:14,background:C.text,color:C.bg,border:"none",borderRadius:9}}>Enregistrer</button>
           </div>
         </div>
@@ -819,12 +949,17 @@ function Main({cu,setCu,onLogout}){
               const exp=!!expanded[h.id];
               const who=h.dest==="pm"?(h.pm_nom||"?")+" ("+(h.pm_cat||"?")+")": (h.gang_nom||"?")+" ("+(h.gang_cat||"?")+")";
               const tl=(h.types||[]).map(t=>t==="objets"?"Objets·"+(h.dest==="pm"?h.pm_pct:h.gang_pct)+"%":t==="liasses"?"Liasses·"+h.taux_liasse+"$":t==="argent"?"Argent·40%":"").filter(Boolean).join(" + ");
+              const totPoidsH=(h.lignes||[]).reduce((s,l)=>s+(+l.poids||0),0);
               return(
                 <div key={h.id} style={card}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div><span style={{fontWeight:700,fontSize:14}}>{who}</span>{h.membre&&<span style={{fontSize:12,color:C.muted,marginLeft:8}}>· payé par {h.membre}</span>}<div style={{fontSize:11,color:C.muted,marginTop:2}}>{tl}</div></div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{textAlign:"right"}}><div style={{fontSize:15,fontWeight:700,color:C.red}}>{fmt(h.total)}</div><div style={{fontSize:11,color:C.muted}}>{h.date}</div></div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:15,fontWeight:700,color:C.red}}>{fmt(h.total)}</div>
+                        {totPoidsH>0&&<div style={{fontSize:11,color:C.blue}}>{fmtKgD(totPoidsH)}</div>}
+                        <div style={{fontSize:11,color:C.muted}}>{h.date}</div>
+                      </div>
                       <button onClick={()=>setExpanded(e=>({...e,[h.id]:!e[h.id]}))} style={{fontSize:11,padding:"4px 10px",color:C.muted}}>{exp?"Masquer":"Détail"}</button>
                       {confirmDel===h.id?(
                         <div style={{display:"flex",gap:4,alignItems:"center"}}>
@@ -839,7 +974,7 @@ function Main({cu,setCu,onLogout}){
                   </div>
                   {exp&&(
                     <div style={{borderTop:"1px solid "+C.border,paddingTop:8,marginTop:8,fontSize:12,color:C.muted}}>
-                      {h.types?.includes("objets")&&(h.lignes||[]).map((l,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{l.nom} × {l.qte} ({fmt(l.prix)}/u)</span><span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(l.sous_total))}</span></div>)}
+                      {h.types?.includes("objets")&&(h.lignes||[]).map((l,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{l.nom} × {l.qte} ({fmt(l.prix)}/u){l.poids>0&&" · "+fmtKgD(l.poids)}</span><span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(l.sous_total))}</span></div>)}
                       {h.types?.includes("liasses")&&<div style={{marginBottom:3}}>{h.liasse_qte} liasse{h.liasse_qte>1?"s":""} · face {fmt(h.valeur_face)} → <span style={{color:C.green,fontWeight:600}}>{fmt(h.taux_liasse*h.liasse_qte)}</span></div>}
                       {h.types?.includes("argent")&&<div style={{marginBottom:3}}>Argent sale : {fmt(h.argent_sale)} → <span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(h.argent_sale*0.4))}</span></div>}
                       {h.note&&<div style={{marginTop:6,fontStyle:"italic"}}>{h.note}</div>}
@@ -852,7 +987,6 @@ function Main({cu,setCu,onLogout}){
         </div>
       )}
 
-      {/* APPARTS — Vue grille (filtres conservés). Membre = coffre+stock, Admin = coffre+stock + cat */}
       {tab==="apparts"&&(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
@@ -906,7 +1040,6 @@ function Main({cu,setCu,onLogout}){
           <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm"/></div>
           <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="items_gang"/></div>
 
-          {/* Apparts — gestion complète admin only */}
           {isAdmin&&(
             <div style={card}>
               <div style={S.sec}>Apparts — gestion complète</div>
