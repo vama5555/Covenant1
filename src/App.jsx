@@ -90,7 +90,20 @@ export default function App(){
   return <Main cu={cu} setCu={setCu} onLogout={()=>setCu(null)}/>;
 }
 
-function parseCSV(text){
+// ── Détecte le séparateur CSV : si ';' présent dans la première ligne, c'est lui (Excel FR) ──
+function detectSep(text){
+  const firstLine=text.split(/\r?\n/)[0]||"";
+  // On ignore les ';' à l'intérieur de guillemets
+  let inQ=false, hasSemi=false;
+  for(const c of firstLine){
+    if(c==='"')inQ=!inQ;
+    else if(c===';'&&!inQ){hasSemi=true;break;}
+  }
+  return hasSemi?";":",";
+}
+// ── Parse une chaîne CSV avec un séparateur donné ──
+function parseCSV(text,sep){
+  const SEP=sep||detectSep(text);
   const rows=[]; let cur=[], val="", inQ=false;
   for(let i=0;i<text.length;i++){
     const c=text[i];
@@ -100,24 +113,36 @@ function parseCSV(text){
       else val+=c;
     }else{
       if(c==='"'){inQ=true;}
-      else if(c===','||c===';'){cur.push(val);val="";}
+      else if(c===SEP){cur.push(val);val="";}
       else if(c==='\n'){cur.push(val);rows.push(cur);cur=[];val="";}
       else if(c==='\r'){}
       else val+=c;
     }
   }
   if(val||cur.length){cur.push(val);rows.push(cur);}
-  return rows.filter(r=>r.length&&!(r.length===1&&!r[0].trim()));
+  // Retire un BOM UTF-8 éventuel sur la 1ère cellule
+  if(rows[0]&&rows[0][0]&&rows[0][0].charCodeAt(0)===0xFEFF){
+    rows[0][0]=rows[0][0].slice(1);
+  }
+  return {rows:rows.filter(r=>r.length&&!(r.length===1&&!r[0].trim())), sep:SEP};
 }
+// ── Parse un nombre qui peut avoir une virgule OU un point comme décimale ──
+function parseNum(s){
+  if(s==null)return 0;
+  const t=String(s).trim().replace(/\s/g,"").replace(",",".");
+  return parseFloat(t)||0;
+}
+// ── Export CSV : toujours avec ';' comme séparateur (compatible Excel FR) et virgule décimale ──
 function toCSVItems(items){
-  const esc=v=>{const s=String(v??"");return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-  return "nom,prix,poids\n"+items.map(it=>esc(it.nom)+","+esc(it.prix)+","+esc(it.poids||0)).join("\n");
+  const esc=v=>{const s=String(v??"");return /[";\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const num=v=>String(v??0).replace(".",","); // décimales avec virgule
+  return "\uFEFFnom;prix;poids\n"+items.map(it=>esc(it.nom)+";"+num(it.prix)+";"+num(it.poids||0)).join("\n");
 }
 function toCSVPMs(pms,cats){
-  const esc=v=>{const s=String(v??"");return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-  return "nom,categorie\n"+pms.map(p=>{
+  const esc=v=>{const s=String(v??"");return /[";\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  return "\uFEFFnom;categorie\n"+pms.map(p=>{
     const c=cats.find(x=>x.id===p.categorie_id);
-    return esc(p.nom)+","+esc(c?c.nom:"");
+    return esc(p.nom)+";"+esc(c?c.nom:"");
   }).join("\n");
 }
 function downloadCSV(filename,content){
@@ -411,8 +436,10 @@ function Main({cu,setCu,onLogout}){
   async function onFileChosen(e,target){
     const file=e.target.files?.[0]; e.target.value="";
     if(!file)return;
-    const text=await file.text();
-    const rows=parseCSV(text);
+    // Lecture explicite en UTF-8 pour éviter les caractères cassés (é, è, etc.)
+    const buf=await file.arrayBuffer();
+    const text=new TextDecoder("utf-8").decode(buf);
+    const {rows,sep}=parseCSV(text);
     if(!rows.length){setImportErr({target,msg:"Le fichier est vide."});return;}
 
     if(target==="pms"){
@@ -430,31 +457,31 @@ function Main({cu,setCu,onLogout}){
         data.push({nom,categorie_id:cat.id});
       });
       if(!data.length&&!skipped.length){setImportErr({target,msg:"Aucune ligne valide trouvée."});return;}
-      setImportDlg({target,items:data,skipped});
+      setImportDlg({target,items:data,skipped,sep});
     } else {
       // items_pm / items_gang : nom,prix,poids — 3 colonnes obligatoires
       const first=rows[0];
-      const hasHeader = first.length>=2 && (isNaN(parseFloat(first[1])) || /nom|name/i.test(first[0]));
+      // Détection en-tête : 1ère ligne contient "nom" ou "name" OU sa 2e cellule n'est pas un nombre
+      const hasHeader = first.length>=2 && (/nom|name/i.test(first[0]) || isNaN(parseNum(first[1])));
       const dataRows = hasHeader ? rows.slice(1) : rows;
 
-      // Vérification : chaque ligne doit avoir au moins 3 colonnes
       if(dataRows.length===0){setImportErr({target,msg:"Aucune ligne de données après l'en-tête."});return;}
       const missingPoids = dataRows.some(r => r.length < 3);
       if(missingPoids){
-        setImportErr({target,msg:"Colonne \"poids\" manquante. Le format CSV doit contenir 3 colonnes : nom, prix, poids (en Kg)."});
+        setImportErr({target,msg:"Colonne \"poids\" manquante. Le format CSV doit contenir 3 colonnes : nom, prix, poids (en Kg). Détecté : "+(sep===";"?"séparateur ';'":"séparateur ','")+"."});
         return;
       }
 
       const data=dataRows
         .map(r=>({
           nom:(r[0]||"").trim(),
-          prix:Math.round(parseFloat((r[1]||"0").replace(",","."))||0),
-          poids:Math.round(parseFloat((r[2]||"0").replace(",","."))*1000)/1000||0,
+          prix:Math.round(parseNum(r[1])),
+          poids:Math.round(parseNum(r[2])*1000)/1000,
           visible:true
         }))
         .filter(r=>r.nom&&r.prix>=0);
       if(!data.length){setImportErr({target,msg:"Aucune ligne valide trouvée."});return;}
-      setImportDlg({target,items:data,skipped:[]});
+      setImportDlg({target,items:data,skipped:[],sep});
     }
   }
 
@@ -696,17 +723,24 @@ function Main({cu,setCu,onLogout}){
 
       {importErr&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"1rem"}} onClick={()=>setImportErr(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:440,width:"100%",border:"1px solid rgba(224,85,85,0.4)",background:"rgba(224,85,85,0.05)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:480,width:"100%",border:"1px solid rgba(224,85,85,0.4)",background:"rgba(224,85,85,0.05)"}}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:8,color:C.red}}>⛔ Import bloqué</div>
             <div style={{fontSize:13,color:C.text,marginBottom:14,lineHeight:1.5}}>{importErr.msg}</div>
             <div style={{background:"rgba(224,85,85,0.08)",border:"1px solid rgba(224,85,85,0.3)",borderRadius:6,padding:"10px 12px",fontSize:12,color:C.muted,marginBottom:14}}>
-              <strong style={{color:C.text}}>Format attendu :</strong>
-              <div style={{marginTop:6,fontFamily:"monospace",fontSize:11,color:C.text,background:C.surfaceAlt,padding:"6px 8px",borderRadius:4}}>
+              <strong style={{color:C.text}}>Format attendu — 3 colonnes : nom, prix, poids (Kg)</strong>
+              <div style={{marginTop:8,fontSize:11,color:C.text}}>Format Excel FR (recommandé) — séparateur <code style={{background:C.surfaceAlt,padding:"1px 4px",borderRadius:3}}>;</code> :</div>
+              <div style={{marginTop:4,fontFamily:"monospace",fontSize:11,color:C.text,background:C.surfaceAlt,padding:"6px 8px",borderRadius:4}}>
+                nom;prix;poids<br/>
+                Bague en or;145;0,05<br/>
+                Console de jeu;420;3,0
+              </div>
+              <div style={{marginTop:10,fontSize:11,color:C.text}}>Format anglo-saxon — séparateur <code style={{background:C.surfaceAlt,padding:"1px 4px",borderRadius:3}}>,</code> :</div>
+              <div style={{marginTop:4,fontFamily:"monospace",fontSize:11,color:C.text,background:C.surfaceAlt,padding:"6px 8px",borderRadius:4}}>
                 nom,prix,poids<br/>
                 Bague en or,145,0.05<br/>
                 Console de jeu,420,3.0
               </div>
-              <div style={{marginTop:8,fontSize:11}}>Le poids est en Kg (décimales acceptées). Sépare les valeurs par des virgules.</div>
+              <div style={{marginTop:8,fontSize:11}}>💡 Astuce : exporte les items existants, ajuste les poids dans Excel, puis réimporte le fichier.</div>
             </div>
             <div style={{display:"flex",justifyContent:"flex-end"}}>
               <button onClick={()=>setImportErr(null)}>OK, j'ai compris</button>
