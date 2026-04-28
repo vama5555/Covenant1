@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://ppaokymwkazzwwdzjmdb.supabase.co";
@@ -18,6 +18,17 @@ const pv    = (v,max) => Math.min(100,Math.round((v/Math.max(1,max))*100));
 const today = () => new Date().toISOString().slice(0,10);
 const ago   = n => { const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); };
 
+const blDuration = m => m<=99000?1:m<=199000?2:3;
+const fmtTime = d => d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+const fmtDateTime = d => d.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"})+" "+fmtTime(d);
+const fmtRem = ms => {
+  if(ms<=0) return "Prêt à récupérer";
+  const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000), s=Math.floor((ms%60000)/1000);
+  if(h>0) return h+"h "+m+"m restantes";
+  if(m>0) return m+"m "+s+"s restantes";
+  return s+"s restantes";
+};
+
 const C={bg:"#2a2a2a",surface:"#333",surfaceAlt:"#3d3d3d",border:"#505050",text:"#f0f0f0",muted:"#a0a0a0",green:"#3dbf8f",red:"#e05555",amber:"#d4920a",blue:"#5aaee8"};
 const card={background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"16px 18px",boxShadow:"0 2px 10px rgba(0,0,0,0.25)"};
 const S={card,inp:{width:"100%"},lbl:{fontSize:11,color:C.muted,marginBottom:3,fontWeight:500},sec:{fontSize:10,fontWeight:700,color:C.muted,margin:"0 0 14px",textTransform:"uppercase",letterSpacing:"0.12em"},row:{display:"flex",alignItems:"center",gap:8,marginBottom:8}};
@@ -28,21 +39,46 @@ function RoleBadge({role}){const a=role==="admin";return <span style={{fontSize:
 function Loader(){return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"60vh",color:C.muted,fontSize:14}}>Chargement...</div>;}
 
 function Login({onLogin}){
-  const [code,setCode]=useState(""); const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
+  const [users,setUsers]=useState([]);
+  const [userNom,setUserNom]=useState("");
+  const [code,setCode]=useState("");
+  const [err,setErr]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [usersLoading,setUsersLoading]=useState(true);
+
+  useEffect(()=>{
+    sb.from("users").select("nom").order("nom").then(({data})=>{
+      setUsers(data||[]);
+      setUsersLoading(false);
+    });
+  },[]);
+
   async function go(){
-    setLoading(true); setErr("");
-    const {data}=await sb.from("users").select("*").eq("code",code.trim()).single();
-    if(data) onLogin(data); else setErr("Code incorrect");
+    setErr("");
+    if(!userNom){setErr("Sélectionne un utilisateur");return;}
+    if(!code.trim()){setErr("Saisis ton code");return;}
+    setLoading(true);
+    const {data}=await sb.from("users").select("*").ilike("nom",userNom).eq("code",code.trim()).maybeSingle();
+    if(data) onLogin(data); else setErr("Identifiants incorrects");
     setLoading(false);
   }
+
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
     <style>{G}</style>
-    <div style={{marginBottom:32,textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.18em",marginBottom:8}}>Accès sécurisé</div><h1 style={{fontSize:28,fontWeight:700,color:C.text,margin:0}}>Compta Covenant</h1></div>
+    <div style={{marginBottom:32,textAlign:"center"}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.18em",marginBottom:8}}>Accès sécurisé</div>
+      <h1 style={{fontSize:28,fontWeight:700,color:C.text,margin:0}}>Compta Covenant</h1>
+    </div>
     <div style={{...card,width:"100%",maxWidth:360,padding:"24px"}}>
-      <div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>Code d'accès</div>
+      <div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Utilisateur</div>
+      <select value={userNom} onChange={e=>setUserNom(e.target.value)} disabled={usersLoading} style={{width:"100%",marginBottom:14,fontSize:14,padding:"9px 11px"}}>
+        <option value="">{usersLoading?"Chargement...":"— sélectionner —"}</option>
+        {users.map(u=><option key={u.nom} value={u.nom}>{u.nom}</option>)}
+      </select>
+      <div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Code d'accès</div>
       <input type="password" placeholder="• • • • • •" value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} style={{width:"100%",marginBottom:err?8:14,fontSize:20,letterSpacing:"0.35em",textAlign:"center"}}/>
       {err&&<div style={{fontSize:12,color:C.red,marginBottom:12,fontWeight:500,textAlign:"center"}}>{err}</div>}
-      <button onClick={go} disabled={loading} style={{width:"100%",padding:"11px",fontWeight:700,fontSize:14,background:"#585858",color:C.text,border:"1px solid #686868",borderRadius:8}}>{loading?"...":"Connexion"}</button>
+      <button onClick={go} disabled={loading||usersLoading} style={{width:"100%",padding:"11px",fontWeight:700,fontSize:14,background:"#585858",color:C.text,border:"1px solid #686868",borderRadius:8}}>{loading?"...":"Connexion"}</button>
     </div>
   </div>;
 }
@@ -50,10 +86,41 @@ function Login({onLogin}){
 export default function App(){
   const [cu,setCu]=useState(null);
   if(!cu) return <Login onLogin={setCu}/>;
-  return <Main cu={cu} onLogout={()=>setCu(null)}/>;
+  return <Main cu={cu} setCu={setCu} onLogout={()=>setCu(null)}/>;
 }
 
-function Main({cu,onLogout}){
+function parseCSV(text){
+  const rows=[]; let cur=[], val="", inQ=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQ){
+      if(c==='"'&&text[i+1]==='"'){val+='"';i++;}
+      else if(c==='"'){inQ=false;}
+      else val+=c;
+    }else{
+      if(c==='"'){inQ=true;}
+      else if(c===','||c===';'){cur.push(val);val="";}
+      else if(c==='\n'){cur.push(val);rows.push(cur);cur=[];val="";}
+      else if(c==='\r'){}
+      else val+=c;
+    }
+  }
+  if(val||cur.length){cur.push(val);rows.push(cur);}
+  return rows.filter(r=>r.length&&!(r.length===1&&!r[0].trim()));
+}
+function toCSV(items){
+  const esc=v=>{const s=String(v??"");return /[",;\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  return "nom,prix\n"+items.map(it=>esc(it.nom)+","+esc(it.prix)).join("\n");
+}
+function downloadCSV(filename,content){
+  const blob=new Blob([content],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function Main({cu,setCu,onLogout}){
   const isAdmin=cu.role==="admin";
   const [tab,setTab]=useState("dashboard");
   const [loading,setLoading]=useState(true);
@@ -68,10 +135,11 @@ function Main({cu,onLogout}){
   const [members,setMembers]=useState([]);
   const [history,setHistory]=useState([]);
   const [users,setUsers]=useState([]);
+  const [blanch,setBlanch]=useState(null);
 
   const loadAll=useCallback(async()=>{
     setLoading(true);
-    const [a,cpm,cg,p,g,ipm,ig,bm,h,u]=await Promise.all([
+    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl]=await Promise.all([
       sb.from("apparts").select("*").order("nom"),
       sb.from("categories_pm").select("*").order("pct_objets"),
       sb.from("categories_gang").select("*").order("pct_objets"),
@@ -82,6 +150,7 @@ function Main({cu,onLogout}){
       sb.from("membres_comptes").select("*").order("nom"),
       sb.from("transactions").select("*").order("created_at",{ascending:false}),
       sb.from("users").select("*").order("nom"),
+      sb.from("blanchiment").select("*").order("depot_at",{ascending:false}).limit(1),
     ]);
     setApparts(a.data||[]);
     setCatsPM(cpm.data||[]);
@@ -93,6 +162,7 @@ function Main({cu,onLogout}){
     setMembers(bm.data||[]);
     setHistory(h.data||[]);
     setUsers(u.data||[]);
+    setBlanch((bl.data&&bl.data[0])||null);
     setLoading(false);
   },[]);
 
@@ -104,7 +174,28 @@ function Main({cu,onLogout}){
   const [copied,setCopied]=useState(null);
   const [confirmDel,setConfirmDel]=useState(null);
 
-  // ── TX ──────────────────────────────────────────────────
+  const [now,setNow]=useState(Date.now());
+  useEffect(()=>{
+    if(!blanch)return;
+    const t=setInterval(()=>setNow(Date.now()),1000);
+    return ()=>clearInterval(t);
+  },[blanch]);
+
+  const [blAmount,setBlAmount]=useState("");
+  async function startBlanch(){
+    const v=+blAmount||0; if(v<=0) return;
+    if(blanch){alert("Un dépôt est déjà en cours.");return;}
+    const dep=new Date();
+    const rec=new Date(dep.getTime()+blDuration(v)*3600000);
+    const {data}=await sb.from("blanchiment").insert({montant:v,depot_at:dep.toISOString(),recup_at:rec.toISOString(),user_nom:cu.nom}).select().single();
+    if(data){setBlanch(data);setBlAmount("");}
+  }
+  async function collectBlanch(){
+    if(!blanch)return;
+    await sb.from("blanchiment").delete().eq("id",blanch.id);
+    setBlanch(null);
+  }
+
   const E0={dest:"pm",pmId:"",gangId:"",membreId:"",qtes:{},liasseQte:"",argentSale:"",date:today(),note:""};
   const [tx,setTx]=useState(E0);
 
@@ -162,7 +253,6 @@ function Main({cu,onLogout}){
     setConfirmDel(null);
   }
 
-  // ── HISTORIQUE ──────────────────────────────────────────
   const [hFil,setHFil]=useState({who:""});
   const whoOpts=useMemo(()=>{const seen=new Set();return history.reduce((acc,h)=>{const n=h.dest==="pm"?(h.pm_nom||""):(h.gang_nom||"");const k=h.dest+":"+n;if(!seen.has(k)&&n){seen.add(k);acc.push({key:k,label:(h.dest==="pm"?"PM — ":"Gang — ")+n});}return acc;},[]);},[history]);
   const filtH=useMemo(()=>history.filter(h=>{
@@ -170,7 +260,6 @@ function Main({cu,onLogout}){
     return h.date>=hFrom&&h.date<=hTo;
   }),[history,hFil,hFrom,hTo]);
 
-  // ── APPARTS ─────────────────────────────────────────────
   const [apCatF,setApCatF]=useState("");
   const [apSort,setApSort]=useState({key:"",dir:-1});
   const sortedAp=useMemo(()=>{
@@ -184,7 +273,6 @@ function Main({cu,onLogout}){
     setApparts(p=>p.map(a=>a.id===id?{...a,...fields}:a));
   }
 
-  // ── DASHBOARD ───────────────────────────────────────────
   const dashH=useMemo(()=>history.filter(h=>h.date>=dFrom&&h.date<=dTo),[history,dFrom,dTo]);
   const totPaye=dashH.reduce((a,x)=>a+x.total,0);
   const totCoffres=apparts.reduce((a,x)=>a+x.coffre,0);
@@ -202,7 +290,6 @@ function Main({cu,onLogout}){
     return [{label:"Objets",val:o,p:Math.round(o/t*100),color:C.blue},{label:"Liasses",val:l,p:Math.round(l/t*100),color:C.green},{label:"Argent sale",val:ar,p:Math.round(ar/t*100),color:C.amber}];
   },[dashH]);
 
-  // ── SETTINGS STATE ───────────────────────────────────────
   const [nCPM,setNCPM]=useState({nom:"",pct_objets:"",taux_liasse:""}); const [eCPM,setECPM]=useState(null);
   const [nCG,setNCG]=useState({nom:"",pct_objets:"",taux_liasse:""});   const [eCG,setECG]=useState(null);
   const [nPM,setNPM]=useState({nom:"",categorie_id:""});   const [ePM,setEPM]=useState(null);
@@ -213,7 +300,63 @@ function Main({cu,onLogout}){
   const [nU,setNU]=useState({nom:"",code:"",role:"membre"});
   const [eCapId,setECapId]=useState(null); const [eCapV,setECapV]=useState({});
 
-  const TABS=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"settings",label:"Paramètres"}];
+  const [pwd,setPwd]=useState({cur:"",neu:"",conf:""});
+  const [pwdMsg,setPwdMsg]=useState(null);
+  async function changePwd(){
+    setPwdMsg(null);
+    if(!pwd.cur||!pwd.neu||!pwd.conf){setPwdMsg({t:"err",m:"Tous les champs sont requis"});return;}
+    if(pwd.cur!==cu.code){setPwdMsg({t:"err",m:"Code actuel incorrect"});return;}
+    if(pwd.neu!==pwd.conf){setPwdMsg({t:"err",m:"Les codes ne correspondent pas"});return;}
+    if(pwd.neu.length<3){setPwdMsg({t:"err",m:"Code trop court (min 3 caractères)"});return;}
+    const {error}=await sb.from("users").update({code:pwd.neu}).eq("id",cu.id);
+    if(error){setPwdMsg({t:"err",m:"Erreur : "+error.message});return;}
+    setCu({...cu,code:pwd.neu});
+    setUsers(us=>us.map(u=>u.id===cu.id?{...u,code:pwd.neu}:u));
+    setPwd({cur:"",neu:"",conf:""});
+    setPwdMsg({t:"ok",m:"Code modifié avec succès"});
+    setTimeout(()=>setPwdMsg(null),3500);
+  }
+
+  const fileRefPM=useRef(null);
+  const fileRefG=useRef(null);
+  const [importDlg,setImportDlg]=useState(null);
+
+  function triggerImport(target){
+    (target==="pm"?fileRefPM:fileRefG).current?.click();
+  }
+  async function onFileChosen(e,target){
+    const file=e.target.files?.[0]; e.target.value="";
+    if(!file)return;
+    const text=await file.text();
+    const rows=parseCSV(text);
+    if(!rows.length){alert("Fichier vide");return;}
+    const first=rows[0];
+    const hasHeader=first.length>=2 && isNaN(parseFloat(first[1]));
+    const data=(hasHeader?rows.slice(1):rows)
+      .map(r=>({nom:(r[0]||"").trim(),prix:Math.round(parseFloat((r[1]||"0").replace(",","."))||0)}))
+      .filter(r=>r.nom&&r.prix>=0);
+    if(!data.length){alert("Aucune ligne valide trouvée");return;}
+    setImportDlg({target,items:data});
+  }
+  async function confirmImport(mode){
+    if(!importDlg)return;
+    const {target,items}=importDlg;
+    const table=target==="pm"?"items_pm":"items_gang";
+    if(mode==="replace"){
+      await sb.from(table).delete().neq("id","00000000-0000-0000-0000-000000000000");
+    }
+    const {data}=await sb.from(table).insert(items).select();
+    if(target==="pm")setItemsPM(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
+    else setItemsG(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
+    setImportDlg(null);
+  }
+  function exportCSV(target){
+    const items=target==="pm"?itemsPM:itemsG;
+    const fname=target==="pm"?"items_pm.csv":"items_gang.csv";
+    downloadCSV(fname,toCSV(items));
+  }
+
+  const TABS=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
   const ns=id=>({padding:"10px 15px",fontSize:13,fontWeight:tab===id?600:400,color:tab===id?C.text:C.muted,borderBottom:tab===id?"2px solid "+C.text:"2px solid transparent",background:"none",border:"none",cursor:"pointer",borderRadius:0,whiteSpace:"nowrap",boxShadow:"none"});
 
   function CatTable({cats,setCats,table,eId,setEId,nc,setNc}){
@@ -260,11 +403,15 @@ function Main({cu,onLogout}){
     </>;
   }
 
-  function IList({items,setItems,table,eId,setEId,ni,setNi,canEdit}){
+  function IList({items,setItems,table,eId,setEId,ni,setNi,canEdit,target}){
     async function save(it){await sb.from(table).update({nom:it.nom,prix:it.prix}).eq("id",it.id);setItems(is=>is.map(x=>x.id===it.id?it:x));setEId(null);}
     async function add(){if(!ni.nom||!ni.prix)return;const{data}=await sb.from(table).insert({nom:ni.nom,prix:+ni.prix}).select().single();if(data)setItems(p=>[...p,data]);setNi({nom:"",prix:""});}
     async function del(id){await sb.from(table).delete().eq("id",id);setItems(is=>is.filter(x=>x.id!==id));}
     return <>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
+        <button onClick={()=>exportCSV(target)} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
+        {canEdit&&<button onClick={()=>triggerImport(target)} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
+      </div>
       {items.map(it=>(
         <div key={it.id} style={S.row}>
           {canEdit&&eId===it.id
@@ -283,9 +430,51 @@ function Main({cu,onLogout}){
 
   if(loading) return <div style={{background:C.bg,minHeight:"100vh"}}><style>{G}</style><Loader/></div>;
 
+  const blDep = blanch?new Date(blanch.depot_at):null;
+  const blRec = blanch?new Date(blanch.recup_at):null;
+  const blMs = blRec?(blRec.getTime()-now):0;
+  const blTotal = blDep&&blRec?(blRec.getTime()-blDep.getTime()):1;
+  const blElapsed = blDep?(now-blDep.getTime()):0;
+  const blPct = Math.min(100,Math.max(0,(blElapsed/blTotal)*100));
+  const blReady = blMs<=0;
+  const blPreviewAmount = +blAmount||0;
+  const blPreviewDur = blPreviewAmount>0?blDuration(blPreviewAmount):0;
+  const blPreviewEnd = blPreviewAmount>0?new Date(Date.now()+blPreviewDur*3600000):null;
+
   return (
     <div style={{padding:"1.25rem",maxWidth:740,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text}}>
       <style>{G}</style>
+
+      <input ref={fileRefPM} type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"pm")} style={{display:"none"}}/>
+      <input ref={fileRefG}  type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"gang")} style={{display:"none"}}/>
+
+      {importDlg&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"1rem"}} onClick={()=>setImportDlg(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:420,width:"100%"}}>
+            <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>Importer items {importDlg.target==="pm"?"PM":"gangs"}</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:14}}>{importDlg.items.length} ligne{importDlg.items.length>1?"s":""} détectée{importDlg.items.length>1?"s":""} dans le fichier.</div>
+            <div style={{maxHeight:140,overflowY:"auto",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:8,padding:8,marginBottom:14,fontSize:12}}>
+              {importDlg.items.slice(0,8).map((it,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"2px 4px"}}><span>{it.nom}</span><span style={{color:C.muted}}>{fmt(it.prix)}</span></div>)}
+              {importDlg.items.length>8&&<div style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:4}}>… et {importDlg.items.length-8} de plus</div>}
+            </div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Mode d'import :</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+              <button onClick={()=>confirmImport("append")} style={{padding:"10px 14px",textAlign:"left",background:C.surfaceAlt,border:"1px solid "+C.border}}>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>Ajouter à l'existant</div>
+                <div style={{fontSize:11,color:C.muted}}>Les nouveaux items sont ajoutés. L'existant est conservé.</div>
+              </button>
+              <button onClick={()=>{if(confirm("Supprimer TOUS les items actuels avant import ?"))confirmImport("replace");}} style={{padding:"10px 14px",textAlign:"left",background:"rgba(224,85,85,0.08)",border:"1px solid rgba(224,85,85,0.3)"}}>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:2,color:C.red}}>Écraser tout</div>
+                <div style={{fontSize:11,color:C.muted}}>Supprime tous les items actuels avant import.</div>
+              </button>
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end"}}>
+              <button onClick={()=>setImportDlg(null)}>Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}>
         <h2 style={{fontSize:19,fontWeight:700,margin:0}}>Compta Covenant</h2>
         <div style={{display:"flex",alignItems:"center",gap:8}}><RoleBadge role={cu.role}/><span style={{fontSize:13,color:C.muted}}>{cu.nom}</span><button onClick={onLogout} style={{fontSize:12,color:C.red,padding:"4px 10px"}}>Déconnexion</button></div>
@@ -294,7 +483,6 @@ function Main({cu,onLogout}){
         {TABS.map(t=><button key={t.id} style={ns(t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>)}
       </div>
 
-      {/* DASHBOARD */}
       {tab==="dashboard"&&(
         <div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:16}}>
@@ -311,6 +499,66 @@ function Main({cu,onLogout}){
             <div style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Payé aux PM</div><div style={{fontSize:26,fontWeight:700,color:C.red}}>{fmt(totPaye)}</div><div style={{fontSize:11,color:C.muted,marginTop:3}}>{dashH.length} transaction{dashH.length!==1?"s":""}</div></div>
             <div style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>Répartition</div>{rep.map(r=><div key={r.label} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:C.muted}}>{r.label}</span><span style={{fontWeight:600,color:r.val>0?C.text:C.muted}}>{r.val>0?fmt(Math.round(r.val))+" · "+r.p+"%":"—"}</span></div><Bar val={r.val} max={Math.max(1,...rep.map(x=>x.val))} color={r.color}/></div>)}</div>
           </div>
+
+          <div style={{...card,marginBottom:16,borderLeft:"3px solid "+C.amber}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:10,fontWeight:700,color:C.amber,textTransform:"uppercase",letterSpacing:"0.12em"}}>Blanchisserie</span>
+                <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:600,
+                  background:!blanch?"rgba(160,160,160,0.15)":blReady?"rgba(61,191,143,0.15)":"rgba(212,146,10,0.15)",
+                  color:!blanch?C.muted:blReady?C.green:C.amber,
+                  border:"1px solid "+(!blanch?"rgba(160,160,160,0.3)":blReady?"rgba(61,191,143,0.3)":"rgba(212,146,10,0.3)")}}>
+                  {!blanch?"Vide":blReady?"Prêt":"En cours"}
+                </span>
+              </div>
+            </div>
+
+            {!blanch?(
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"end"}}>
+                  <div>
+                    <div style={S.lbl}>Montant à blanchir ($)</div>
+                    <input type="number" min="1" placeholder="ex: 75000" value={blAmount} onChange={e=>setBlAmount(e.target.value)} onKeyDown={e=>e.key==="Enter"&&startBlanch()} style={{width:"100%"}}/>
+                  </div>
+                  <button onClick={startBlanch} disabled={blPreviewAmount<=0} style={{padding:"8px 22px",fontWeight:700,background:blPreviewAmount>0?C.amber:"#3a3a3a",color:blPreviewAmount>0?"#1a1a1a":C.muted,border:"none"}}>Démarrer</button>
+                </div>
+                <div style={{marginTop:8,fontSize:12,color:C.muted}}>
+                  {blPreviewAmount<=0?"Saisis un montant pour voir la durée estimée."
+                  :<>Durée : <strong style={{color:C.text}}>{blPreviewDur}h</strong> · Récupération vers <strong style={{color:C.green}}>{fmtTime(blPreviewEnd)}</strong></>}
+                </div>
+              </div>
+            ):(
+              <div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:12}}>
+                  <div>
+                    <div style={S.lbl}>Montant déposé</div>
+                    <div style={{fontSize:20,fontWeight:700,color:C.amber}}>{fmt(blanch.montant)}</div>
+                  </div>
+                  <div>
+                    <div style={S.lbl}>Déposé à</div>
+                    <div style={{fontSize:14,fontWeight:600}}>{fmtDateTime(blDep)}</div>
+                    {blanch.user_nom&&<div style={{fontSize:11,color:C.muted}}>par {blanch.user_nom}</div>}
+                  </div>
+                  <div>
+                    <div style={S.lbl}>Récupération</div>
+                    <div style={{fontSize:14,fontWeight:600,color:C.green}}>{fmtDateTime(blRec)}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted,marginBottom:4}}>
+                      <span>{fmtRem(blMs)}</span>
+                      <span>{Math.round(blPct)}%</span>
+                    </div>
+                    <Bar val={blPct} max={100} color={blReady?C.green:C.amber}/>
+                  </div>
+                  <button onClick={collectBlanch} disabled={!blReady} style={{padding:"7px 16px",fontWeight:700,background:blReady?C.green:"#3a3a3a",color:blReady?"#1a1a1a":C.muted,border:"none",cursor:blReady?"pointer":"not-allowed",opacity:blReady?1:0.6}}>Récupérer</button>
+                  {isAdmin&&<button onClick={()=>{if(confirm("Annuler le dépôt en cours ?"))collectBlanch();}} style={{color:C.red,fontSize:11,padding:"4px 10px"}}>Annuler</button>}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",margin:"18px 0 10px"}}>Comptes membres</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10}}>
             {members.map(m=>(
@@ -326,7 +574,6 @@ function Main({cu,onLogout}){
         </div>
       )}
 
-      {/* TRANSACTIONS */}
       {tab==="transactions"&&(
         <div style={card}>
           <div style={{fontWeight:700,fontSize:15,marginBottom:14}}>Nouvelle transaction</div>
@@ -370,7 +617,6 @@ function Main({cu,onLogout}){
         </div>
       )}
 
-      {/* HISTORIQUE */}
       {tab==="historique"&&(
         <div>
           <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
@@ -422,7 +668,6 @@ function Main({cu,onLogout}){
         </div>
       )}
 
-      {/* APPARTS */}
       {tab==="apparts"&&(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
@@ -469,15 +714,14 @@ function Main({cu,onLogout}){
         </div>
       )}
 
-      {/* PARAMÈTRES */}
-      {tab==="settings"&&(
+      {tab==="database"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={card}><div style={S.sec}>Catégories PM</div><CatTable cats={catsPM} setCats={setCatsPM} table="categories_pm" eId={eCPM} setEId={setECPM} nc={nCPM} setNc={setNCPM}/></div>
           <div style={card}><div style={S.sec}>Petites mains</div><PList list={pms} setList={setPMs} cats={catsPM} table="pms" eId={ePM} setEId={setEPM} ni={nPM} setNi={setNPM}/></div>
           <div style={card}><div style={S.sec}>Catégories gangs</div><CatTable cats={catsGang} setCats={setCatsGang} table="categories_gang" eId={eCG} setEId={setECG} nc={nCG} setNc={setNCG}/></div>
           <div style={card}><div style={S.sec}>Gangs</div><PList list={gangs} setList={setGangs} cats={catsGang} table="gangs" eId={eGa} setEId={setEGa} ni={nGa} setNi={setNGa}/></div>
-          <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin}/></div>
-          <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin}/></div>
+          <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="pm"/></div>
+          <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="gang"/></div>
           {isAdmin&&(
             <div style={card}>
               <div style={S.sec}>Apparts — capacités & codes</div>
@@ -523,6 +767,23 @@ function Main({cu,onLogout}){
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {tab==="parametres"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <div style={card}>
+            <div style={S.sec}>Mon mot de passe</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Connecté en tant que <strong style={{color:C.text}}>{cu.nom}</strong></div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:10,alignItems:"end"}}>
+              <div><div style={S.lbl}>Code actuel</div><input type="password" style={S.inp} value={pwd.cur} onChange={e=>setPwd(f=>({...f,cur:e.target.value}))}/></div>
+              <div><div style={S.lbl}>Nouveau code</div><input type="password" style={S.inp} value={pwd.neu} onChange={e=>setPwd(f=>({...f,neu:e.target.value}))}/></div>
+              <div><div style={S.lbl}>Confirmer</div><input type="password" style={S.inp} value={pwd.conf} onChange={e=>setPwd(f=>({...f,conf:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&changePwd()}/></div>
+              <button onClick={changePwd} style={{fontWeight:700,background:C.blue,color:"#1a1a1a",border:"none"}}>Modifier</button>
+            </div>
+            {pwdMsg&&<div style={{marginTop:10,fontSize:12,fontWeight:600,color:pwdMsg.t==="ok"?C.green:C.red}}>{pwdMsg.m}</div>}
+          </div>
+
           {isAdmin&&(
             <div style={{...card,border:"1px solid rgba(212,132,10,0.4)",background:"rgba(212,132,10,0.06)"}}>
               <div style={{...S.sec,color:C.amber}}>Gestion des accès — admin uniquement</div>
