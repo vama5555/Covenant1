@@ -211,6 +211,65 @@ function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
   );
 }
 
+// ── Carte d'un compte membre avec save sur blur / Entrée ──
+function MemberCard({m,low,setMembers}){
+  const [val,setVal]=useState(String(m.solde));
+  const [status,setStatus]=useState(null); // null | "saving" | "saved" | "error"
+  const [dirty,setDirty]=useState(false);
+
+  // Synchro si le membre est mis à jour ailleurs (ex: après une transaction)
+  useEffect(()=>{
+    if(!dirty) setVal(String(m.solde));
+  },[m.solde,dirty]);
+
+  async function save(){
+    const s=Math.round(+val||0);
+    if(s===m.solde){setDirty(false);return;}
+    setStatus("saving");
+    const {error}=await sb.from("membres_comptes").update({solde:s}).eq("id",m.id);
+    if(error){
+      setStatus("error");
+      setTimeout(()=>setStatus(null),2500);
+      return;
+    }
+    setMembers(ms=>ms.map(x=>x.id===m.id?{...x,solde:s}:x));
+    setDirty(false);
+    setStatus("saved");
+    setTimeout(()=>setStatus(null),1500);
+  }
+
+  return (
+    <div style={{
+      background:low?"rgba(224,85,85,0.08)":C.surface,
+      border:"1px solid "+(low?"rgba(224,85,85,0.4)":dirty?"rgba(90,174,232,0.5)":C.border),
+      borderRadius:12,
+      padding:"14px 16px",
+      boxShadow:"0 2px 10px rgba(0,0,0,0.25)",
+      transition:"all .25s"
+    }}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontSize:15,color:low?C.red:C.text,fontWeight:600}}>{m.nom}</div>
+        {status==="saving"&&<span style={{fontSize:9,color:C.blue,fontWeight:600,textTransform:"uppercase"}}>•••</span>}
+        {status==="saved"&&<span style={{fontSize:9,color:C.green,fontWeight:600,textTransform:"uppercase"}}>✓ Sauvé</span>}
+        {status==="error"&&<span style={{fontSize:9,color:C.red,fontWeight:600,textTransform:"uppercase"}}>⚠ Erreur</span>}
+        {dirty&&!status&&<span style={{fontSize:9,color:C.amber,fontWeight:600,textTransform:"uppercase"}}>• Modifié</span>}
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:4}}>
+        <input
+          type="number"
+          value={val}
+          onChange={e=>{setVal(e.target.value);setDirty(true);}}
+          onBlur={save}
+          onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();}}}
+          style={{flex:1,fontSize:20,fontWeight:700,border:"none!important",background:"transparent!important",color:low?C.red:C.text,padding:"0!important",minWidth:0,boxShadow:"none!important"}}
+        />
+        <span style={{fontSize:14,color:low?C.red:C.muted,fontWeight:600}}>$</span>
+      </div>
+      {low&&<div style={{fontSize:10,color:C.red,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>⚠ Solde faible</div>}
+    </div>
+  );
+}
+
 function Main({cu,setCu,onLogout}){
   const isAdmin=cu.role==="admin";
   const [tab,setTab]=useState("dashboard");
@@ -973,22 +1032,7 @@ function Main({cu,setCu,onLogout}){
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:10}}>
             {members.map(m=>{
               const low=m.solde<alertThreshold;
-              return (
-                <div key={m.id} style={{
-                  ...card,
-                  padding:"14px 16px",
-                  background:low?"rgba(224,85,85,0.08)":C.surface,
-                  border:"1px solid "+(low?"rgba(224,85,85,0.4)":C.border),
-                  transition:"all .25s"
-                }}>
-                  <div style={{fontSize:15,color:low?C.red:C.text,marginBottom:8,fontWeight:600}}>{m.nom}</div>
-                  <div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <input type="number" value={m.solde} onChange={e=>{const s=+e.target.value;setMembers(ms=>ms.map(x=>x.id===m.id?{...x,solde:s}:x));sb.from("membres_comptes").update({solde:s}).eq("id",m.id);}} style={{flex:1,fontSize:20,fontWeight:700,border:"none!important",background:"transparent!important",color:low?C.red:C.text,padding:"0!important",minWidth:0,boxShadow:"none!important"}}/>
-                    <span style={{fontSize:14,color:low?C.red:C.muted,fontWeight:600}}>$</span>
-                  </div>
-                  {low&&<div style={{fontSize:10,color:C.red,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>⚠ Solde faible</div>}
-                </div>
-              );
+              return <MemberCard key={m.id} m={m} low={low} setMembers={setMembers}/>;
             })}
           </div>
         </div>
