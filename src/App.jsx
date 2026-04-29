@@ -33,7 +33,57 @@ const fmtRem = ms => {
 const C={bg:"#2a2a2a",surface:"#333",surfaceAlt:"#3d3d3d",border:"#505050",text:"#f0f0f0",muted:"#a0a0a0",green:"#3dbf8f",red:"#e05555",amber:"#d4920a",blue:"#5aaee8"};
 const card={background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"16px 18px",boxShadow:"0 2px 10px rgba(0,0,0,0.25)"};
 const S={card,inp:{width:"100%"},lbl:{fontSize:11,color:C.muted,marginBottom:3,fontWeight:500},sec:{fontSize:10,fontWeight:700,color:C.muted,margin:"0 0 14px",textTransform:"uppercase",letterSpacing:"0.12em"},row:{display:"flex",alignItems:"center",gap:8,marginBottom:8}};
-const G=`*{box-sizing:border-box;}select,input{background:#3a3a3a!important;border:1px solid #585858!important;border-radius:8px!important;padding:7px 11px!important;font-size:13px!important;color:#f0f0f0!important;outline:none!important;box-shadow:inset 0 1px 4px rgba(0,0,0,0.25)!important;font-family:inherit;transition:border-color .15s;}select{-webkit-appearance:auto!important;appearance:auto!important;cursor:pointer;}select:focus,input:focus{border-color:#888!important;}select option{background:#3a3a3a!important;color:#f0f0f0!important;}input::placeholder{color:#686868!important;}button{background:#3a3a3a;border:1px solid #585858;border-radius:8px;padding:5px 12px;font-size:13px;color:#f0f0f0;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.25);transition:background .12s,transform .08s;white-space:nowrap;flex-shrink:0;}button:hover{background:#484848;}button:active{transform:scale(0.97);}div,span,p,h1,h2,h3,label{color:inherit;}`;
+const G=`*{box-sizing:border-box;}select,input{background:#3a3a3a!important;border:1px solid #585858!important;border-radius:8px!important;padding:7px 11px!important;font-size:13px!important;color:#f0f0f0!important;outline:none!important;box-shadow:inset 0 1px 4px rgba(0,0,0,0.25)!important;font-family:inherit;transition:border-color .15s;}select{-webkit-appearance:auto!important;appearance:auto!important;cursor:pointer;}select:focus,input:focus{border-color:#888!important;}select option{background:#3a3a3a!important;color:#f0f0f0!important;}input::placeholder{color:#686868!important;}button{background:#3a3a3a;border:1px solid #585858;border-radius:8px;padding:5px 12px;font-size:13px;color:#f0f0f0;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.25);transition:background .12s,transform .08s;white-space:nowrap;flex-shrink:0;}button:hover{background:#484848;}button:active{transform:scale(0.97);}div,span,p,h1,h2,h3,label{color:inherit;}
+/* ── Responsive mobile (≤ 700px) ── */
+@media (max-width:700px){
+  /* Padding réduit du conteneur principal */
+  [data-mobile="container"]{padding:0.8rem!important;}
+  /* Header haut de page : nom de l'app + badges → empilés */
+  [data-mobile="header"]{flex-direction:column!important;align-items:flex-start!important;gap:10px!important;}
+  [data-mobile="header-right"]{width:100%!important;justify-content:flex-start!important;flex-wrap:wrap!important;}
+  /* Grilles 4 colonnes → 2 colonnes */
+  [data-mobile="grid-4"]{grid-template-columns:1fr 1fr!important;}
+  /* Grilles 3 colonnes → 1 colonne */
+  [data-mobile="grid-3"]{grid-template-columns:1fr!important;}
+  /* Grilles 2 colonnes → 1 colonne */
+  [data-mobile="grid-2"]{grid-template-columns:1fr!important;}
+  /* Grilles "stack" : tout en colonne */
+  [data-mobile="stack"]{grid-template-columns:1fr!important;}
+  /* Filtres période → wrap propre */
+  [data-mobile="period"]{flex-wrap:wrap!important;}
+  [data-mobile="period"]>div:last-child{flex-wrap:wrap!important;width:100%!important;}
+  /* Items list : nom doit pouvoir s'étirer, prix/poids/boutons compacts */
+  [data-mobile="item-row"]{gap:6px!important;}
+  [data-mobile="item-row"] [data-mobile="col-prix"]{width:55px!important;font-size:11px!important;}
+  [data-mobile="item-row"] [data-mobile="col-poids"]{width:50px!important;font-size:11px!important;white-space:nowrap!important;}
+  [data-mobile="item-row"] [data-mobile="col-actions"]{width:auto!important;gap:2px!important;}
+  [data-mobile="item-row"] [data-mobile="col-actions"] button{padding:3px 6px!important;font-size:10px!important;}
+  /* Total transaction : $ et Kg empilés */
+  [data-mobile="total-row"]{flex-wrap:wrap!important;}
+  [data-mobile="total-row"]>div:first-child>div:last-child{flex-direction:column!important;align-items:flex-start!important;gap:2px!important;}
+  [data-mobile="total-row"]>div:first-child>div:last-child>div:nth-child(2){display:none!important;}
+  /* Cartes membres tableau de bord : 2 par ligne max */
+  [data-mobile="members-grid"]{grid-template-columns:1fr 1fr!important;gap:8px!important;}
+  [data-mobile="members-grid"]>div{padding:10px 12px!important;}
+  /* Stats cartes en haut du dashboard : 2 par ligne au lieu de 3 */
+  [data-mobile="stats-grid"]{grid-template-columns:1fr 1fr!important;}
+  /* Apparts vue grille : 1 colonne */
+  [data-mobile="apparts-grid"]{grid-template-columns:1fr!important;}
+  /* Bigbrother filtres : 2x2 puis wrap */
+  [data-mobile="bb-filters"]{grid-template-columns:1fr 1fr!important;}
+  /* Bigbrother header */
+  [data-mobile="bb-header"]{flex-direction:column!important;align-items:flex-start!important;gap:6px!important;}
+  /* Form de transaction : 4 cols → 2 cols */
+  [data-mobile="tx-form-top"]{grid-template-columns:1fr 1fr!important;}
+  /* Inputs partout : un peu plus compacts */
+  input,select{font-size:14px!important;}
+}
+@media (max-width:420px){
+  /* Très petits écrans : tout en 1 colonne */
+  [data-mobile="grid-4"],[data-mobile="grid-3"],[data-mobile="grid-2"],[data-mobile="bb-filters"],[data-mobile="tx-form-top"]{grid-template-columns:1fr!important;}
+  [data-mobile="stats-grid"]{grid-template-columns:1fr!important;}
+  [data-mobile="members-grid"]{grid-template-columns:1fr!important;}
+}`;
 
 const PREVIEW=5;
 
@@ -900,15 +950,15 @@ function Main({cu,setCu,onLogout}){
       <div style={{display:"flex",alignItems:"center",gap:8,padding:"0 4px 6px",fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",borderBottom:"1px solid "+C.border,marginBottom:4}}>
         <span style={{width:30}}></span>
         <span style={{flex:1}}>Nom</span>
-        <span style={{width:70,textAlign:"right"}}>Prix</span>
-        <span style={{width:65,textAlign:"right"}}>Poids</span>
-        {canEdit&&<span style={{width:80}}></span>}
+        <span data-mobile="col-prix" style={{width:70,textAlign:"right"}}>Prix</span>
+        <span data-mobile="col-poids" style={{width:65,textAlign:"right"}}>Poids</span>
+        {canEdit&&<span data-mobile="col-actions" style={{width:80}}></span>}
       </div>
 
       {displayed.map(it=>{
         const visible=it.visible!==false;
         return (
-          <div key={it.id} style={{...S.row,opacity:visible?1:0.45,transition:"opacity .25s",borderBottom:"1px solid #404040",paddingBottom:6,marginBottom:4}}>
+          <div key={it.id} data-mobile="item-row" style={{...S.row,opacity:visible?1:0.45,transition:"opacity .25s",borderBottom:"1px solid #404040",paddingBottom:6,marginBottom:4}}>
             {canEdit
               ?<button onClick={()=>toggleItemVisibility(it,table,setItems)}
                 title={visible?"Masquer cet item dans Transactions":"Rendre visible dans Transactions"}
@@ -920,19 +970,19 @@ function Main({cu,setCu,onLogout}){
 
             {canEdit&&eId===it.id
               ?<>
-                <input style={{flex:1}} value={it.nom} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,nom:e.target.value}:x))}/>
-                <input type="number" style={{width:70}} value={it.prix} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,prix:+e.target.value}:x))}/>
-                <input type="number" step="0.01" min="0" style={{width:65}} value={it.poids||0} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,poids:e.target.value}:x))}/>
+                <input style={{flex:1,minWidth:0}} value={it.nom} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,nom:e.target.value}:x))}/>
+                <input data-mobile="col-prix" type="number" style={{width:70}} value={it.prix} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,prix:+e.target.value}:x))}/>
+                <input data-mobile="col-poids" type="number" step="0.01" min="0" style={{width:65}} value={it.poids||0} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,poids:e.target.value}:x))}/>
                 <button onClick={()=>save(it)} style={{color:C.green,fontWeight:700}}>OK</button>
               </>
               :<>
-                <span style={{flex:1,fontSize:14,color:C.text}}>
+                <span style={{flex:1,minWidth:0,fontSize:14,color:C.text,wordBreak:"break-word"}}>
                   {it.nom}
                   {!visible&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(224,85,85,0.15)",color:C.red,border:"1px solid rgba(224,85,85,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:6}}>masqué</span>}
                 </span>
-                <span style={{width:70,fontSize:13,color:C.muted,textAlign:"right"}}>{fmt(it.prix)}</span>
-                <span style={{width:65,fontSize:13,color:C.blue,textAlign:"right"}}>{fmtKgD(it.poids||0)}</span>
-                {canEdit&&<div style={{display:"flex",gap:4,width:80,justifyContent:"flex-end"}}>
+                <span data-mobile="col-prix" style={{width:70,fontSize:13,color:C.muted,textAlign:"right",whiteSpace:"nowrap"}}>{fmt(it.prix)}</span>
+                <span data-mobile="col-poids" style={{width:65,fontSize:13,color:C.blue,textAlign:"right",whiteSpace:"nowrap"}}>{fmtKgD(it.poids||0)}</span>
+                {canEdit&&<div data-mobile="col-actions" style={{display:"flex",gap:4,width:80,justifyContent:"flex-end"}}>
                   <button onClick={()=>setEId(it.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
                   <button onClick={()=>del(it.id)} style={{color:C.red,fontSize:11,padding:"3px 8px"}}>×</button>
                 </div>}
@@ -951,12 +1001,11 @@ function Main({cu,setCu,onLogout}){
         </div>
       )}
 
-      {canEdit&&<div style={{display:"flex",gap:6,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
-        <span style={{width:30}}></span>
-        <input style={{flex:1}} placeholder="Nom" value={ni.nom} onChange={e=>setNi(f=>({...f,nom:e.target.value}))}/>
-        <input type="number" style={{width:70}} placeholder="Prix" value={ni.prix} onChange={e=>setNi(f=>({...f,prix:e.target.value}))}/>
-        <input type="number" step="0.01" min="0" style={{width:65}} placeholder="Poids" value={ni.poids} onChange={e=>setNi(f=>({...f,poids:e.target.value}))}/>
-        <button onClick={add} style={{fontWeight:700,color:C.green}}>+</button>
+      {canEdit&&<div style={{display:"flex",gap:6,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4,flexWrap:"wrap"}}>
+        <input style={{flex:"1 1 100%",minWidth:0}} placeholder="Nom" value={ni.nom} onChange={e=>setNi(f=>({...f,nom:e.target.value}))}/>
+        <input type="number" style={{flex:"1 1 80px",minWidth:0}} placeholder="Prix" value={ni.prix} onChange={e=>setNi(f=>({...f,prix:e.target.value}))}/>
+        <input type="number" step="0.01" min="0" style={{flex:"1 1 80px",minWidth:0}} placeholder="Poids" value={ni.poids} onChange={e=>setNi(f=>({...f,poids:e.target.value}))}/>
+        <button onClick={add} style={{fontWeight:700,color:C.green}}>+ Ajouter</button>
       </div>}
     </>;
   }
@@ -1016,7 +1065,7 @@ function Main({cu,setCu,onLogout}){
   const membersDisplayed=showAll.members?members:members.slice(0,PREVIEW);
 
   return (
-    <div style={{padding:"1.25rem",maxWidth:740,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text}}>
+    <div data-mobile="container" style={{padding:"1.25rem",maxWidth:740,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text}}>
       <style>{G}</style>
 
       <input ref={fileRefPM}    type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_pm")} style={{display:"none"}}/>
@@ -1130,9 +1179,9 @@ function Main({cu,setCu,onLogout}){
         </div>
       )}
 
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}>
+      <div data-mobile="header" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}>
         <h2 style={{fontSize:19,fontWeight:700,margin:0}}>Compta Covenant</h2>
-        <div style={{display:"flex",alignItems:"center",gap:8}}><RoleBadge role={cu.role}/><span style={{fontSize:13,color:C.muted}}>{cu.nom}</span><button onClick={onLogout} style={{fontSize:12,color:C.red,padding:"4px 10px"}}>Déconnexion</button></div>
+        <div data-mobile="header-right" style={{display:"flex",alignItems:"center",gap:8}}><RoleBadge role={cu.role}/><span style={{fontSize:13,color:C.muted}}>{cu.nom}</span><button onClick={onLogout} style={{fontSize:12,color:C.red,padding:"4px 10px"}}>Déconnexion</button></div>
       </div>
       <div style={{display:"flex",borderBottom:"1px solid "+C.border,marginBottom:"1.5rem",overflowX:"auto",gap:2}}>
         {TABS.map(t=><button key={t.id} style={ns(t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>)}
@@ -1140,18 +1189,18 @@ function Main({cu,setCu,onLogout}){
 
       {tab==="dashboard"&&(
         <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:16}}>
+          <div data-mobile="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:16}}>
             {[{l:"Total coffres",v:fmt(totCoffres)},{l:"Total comptes",v:fmt(totMem)},{l:"Stock apparts",v:fmtKg(totSU)+" / "+fmtKg(totSM),s:pv(totSU,totSM)+"% occupé"}].map(c=>(
-              <div key={c.l} style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>{c.l}</div><div style={{fontSize:20,fontWeight:700}}>{c.v}</div>{c.s&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{c.s}</div>}</div>
+              <div key={c.l} style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>{c.l}</div><div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2}}>{c.v}</div>{c.s&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{c.s}</div>}</div>
             ))}
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:12,margin:"18px 0 14px"}}>
+          <div data-mobile="period" style={{display:"flex",alignItems:"center",gap:12,margin:"18px 0 14px",flexWrap:"wrap"}}>
             <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>Sur la période</span>
             <div style={{flex:1,height:"1px",background:C.border}}/>
             <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:12,color:C.muted}}>Du</span><input type="date" value={dFrom} onChange={e=>setDFrom(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/><span style={{fontSize:12,color:C.muted}}>au</span><input type="date" value={dTo} onChange={e=>setDTo(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/></div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-            <div style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Payé aux PM</div><div style={{fontSize:26,fontWeight:700,color:C.red}}>{fmt(totPaye)}</div><div style={{fontSize:11,color:C.muted,marginTop:3}}>{dashH.length} transaction{dashH.length!==1?"s":""}</div></div>
+          <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+            <div style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Payé aux PM</div><div style={{fontSize:24,fontWeight:700,color:C.red,wordBreak:"break-word"}}>{fmt(totPaye)}</div><div style={{fontSize:11,color:C.muted,marginTop:3}}>{dashH.length} transaction{dashH.length!==1?"s":""}</div></div>
             <div style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>Répartition</div>{rep.map(r=><div key={r.label} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:C.muted}}>{r.label}</span><span style={{fontWeight:600,color:r.val>0?C.text:C.muted}}>{r.val>0?fmt(Math.round(r.val))+" · "+r.p+"%":"—"}</span></div><Bar val={r.val} max={Math.max(1,...rep.map(x=>x.val))} color={r.color}/></div>)}</div>
           </div>
 
@@ -1216,7 +1265,7 @@ function Main({cu,setCu,onLogout}){
 
           {/* COMPTES MEMBRES — police plus grosse + alerte rouge si solde < seuil */}
           <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",margin:"18px 0 10px"}}>Comptes membres</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:10}}>
+          <div data-mobile="members-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:10}}>
             {members.map(m=>{
               const low=m.solde<alertThreshold;
               return <MemberCard key={m.id} m={m} low={low} setMembers={setMembers} onLog={log}/>;
@@ -1233,7 +1282,7 @@ function Main({cu,setCu,onLogout}){
               <button key={v} onClick={()=>setTx(f=>({...f,dest:v,pmId:"",gangId:"",membreId:"",qtes:{},argentSale:""}))} style={{flex:1,padding:"7px 12px",fontSize:13,fontWeight:tx.dest===v?600:400,background:tx.dest===v?C.surface:"transparent",color:tx.dest===v?C.text:C.muted,border:tx.dest===v?"1px solid "+C.border:"none",borderRadius:7,boxShadow:tx.dest===v?"0 1px 4px rgba(0,0,0,0.25)":"none"}}>{l}</button>
             ))}
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10,marginBottom:14}}>
+          <div data-mobile="tx-form-top" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10,marginBottom:14}}>
             {tx.dest==="pm"
               ?<div><div style={S.lbl}>PM</div><select style={S.inp} value={tx.pmId} onChange={e=>setTx(f=>({...f,pmId:e.target.value}))}><option value="">— choisir —</option>{pms.map(p=><option key={p.id} value={p.id}>{p.nom}</option>)}</select></div>
               :<div><div style={S.lbl}>Gang</div><select style={S.inp} value={tx.gangId} onChange={e=>setTx(f=>({...f,gangId:e.target.value}))}><option value="">— choisir —</option>{gangs.map(g=><option key={g.id} value={g.id}>{g.nom}</option>)}</select></div>
@@ -1255,7 +1304,7 @@ function Main({cu,setCu,onLogout}){
 
           {/* Liasses + Argent sale en 2 colonnes */}
           <div style={{borderTop:"1px solid "+C.border,paddingTop:12,marginBottom:14}}>
-            <div style={{display:"grid",gridTemplateColumns:tx.dest==="pm"?"1fr 1fr":"1fr",gap:14}}>
+            <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:tx.dest==="pm"?"1fr 1fr":"1fr",gap:14}}>
               <div>
                 <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{"Liasses"+(aLiasse>0?" · "+aLiasse+"$":"")}</div>
                 <input type="number" min="0" placeholder="0 liasses" style={{width:"100%"}} value={tx.liasseQte} onChange={e=>setTx(f=>({...f,liasseQte:e.target.value}))}/>
@@ -1270,18 +1319,18 @@ function Main({cu,setCu,onLogout}){
           </div>
 
           {/* TOTAL : $ | Kg côte à côte */}
-          <div style={{borderTop:"1px solid "+C.border,paddingTop:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div data-mobile="total-row" style={{borderTop:"1px solid "+C.border,paddingTop:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
             <div>
               <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:3}}>Total à payer</div>
-              <div style={{display:"flex",alignItems:"baseline",gap:14}}>
-                <div style={{fontSize:28,fontWeight:700,color:C.red}}>{fmt(txTotal)}</div>
+              <div style={{display:"flex",alignItems:"baseline",gap:14,flexWrap:"wrap"}}>
+                <div style={{fontSize:26,fontWeight:700,color:C.red}}>{fmt(txTotal)}</div>
                 {totPoids>0&&<>
                   <div style={{width:1,alignSelf:"stretch",background:C.border}}/>
-                  <div style={{fontSize:18,fontWeight:600,color:C.blue}}>{fmtKgD(totPoids)}</div>
+                  <div style={{fontSize:16,fontWeight:600,color:C.blue}}>{fmtKgD(totPoids)}</div>
                 </>}
               </div>
             </div>
-            <button onClick={submit} style={{padding:"11px 30px",fontWeight:700,fontSize:14,background:C.text,color:C.bg,border:"none",borderRadius:9}}>Enregistrer</button>
+            <button onClick={submit} style={{padding:"10px 22px",fontWeight:700,fontSize:14,background:C.text,color:C.bg,border:"none",borderRadius:9,flexShrink:0}}>Enregistrer</button>
           </div>
         </div>
       )}
@@ -1355,7 +1404,7 @@ function Main({cu,setCu,onLogout}){
             </div>
           </div>
           {!isAdmin&&<div style={{fontSize:11,color:C.muted,marginBottom:10,fontStyle:"italic"}}>💡 Tu peux modifier le coffre et le stock. Pour le reste (nom, catégorie, code, ajout), va dans Database (admin).</div>}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div data-mobile="apparts-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             {sortedAp.map(a=>{
               const ac=getCat(a.categorie);
               return(
@@ -1447,7 +1496,7 @@ function Main({cu,setCu,onLogout}){
               )}
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed "+C.border}}>
                 <div style={S.lbl}>Ajouter un nouvel appart</div>
-                <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr auto",gap:6,alignItems:"end",marginTop:6}}>
+                <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr auto",gap:6,alignItems:"end",marginTop:6}}>
                   <input style={S.inp} placeholder="Nom" value={nAp.nom} onChange={e=>setNAp(f=>({...f,nom:e.target.value}))}/>
                   <select style={S.inp} value={nAp.categorie} onChange={e=>setNAp(f=>({...f,categorie:e.target.value}))}>{APPART_CATS.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</select>
                   <input type="number" style={S.inp} placeholder="Max coffre" value={nAp.max_coffre} onChange={e=>setNAp(f=>({...f,max_coffre:e.target.value}))}/>
@@ -1494,7 +1543,7 @@ function Main({cu,setCu,onLogout}){
           <div style={card}>
             <div style={S.sec}>Mon mot de passe</div>
             <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Connecté en tant que <strong style={{color:C.text}}>{cu.nom}</strong></div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:10,alignItems:"end"}}>
+            <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:10,alignItems:"end"}}>
               <div><div style={S.lbl}>Code actuel</div><input type="password" style={S.inp} value={pwd.cur} onChange={e=>setPwd(f=>({...f,cur:e.target.value}))}/></div>
               <div><div style={S.lbl}>Nouveau code</div><input type="password" style={S.inp} value={pwd.neu} onChange={e=>setPwd(f=>({...f,neu:e.target.value}))}/></div>
               <div><div style={S.lbl}>Confirmer</div><input type="password" style={S.inp} value={pwd.conf} onChange={e=>setPwd(f=>({...f,conf:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&changePwd()}/></div>
@@ -1537,7 +1586,7 @@ function Main({cu,setCu,onLogout}){
                   {u.id!==cu.id&&<button onClick={async()=>{await sb.from("users").delete().eq("id",u.id);setUsers(us=>us.filter(x=>x.id!==u.id));log("access","user_delete",`a supprimé l'accès <b>${u.nom}</b> (rôle : ${u.role})`);}} style={{color:C.red}}>Suppr.</button>}
                 </div>
               ))}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 90px auto",gap:8,alignItems:"end",borderTop:"1px solid rgba(212,132,10,0.3)",paddingTop:10,marginTop:4}}>
+              <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 100px 90px auto",gap:8,alignItems:"end",borderTop:"1px solid rgba(212,132,10,0.3)",paddingTop:10,marginTop:4}}>
                 <div><div style={S.lbl}>Nom</div><input style={S.inp} value={nU.nom} onChange={e=>setNU(f=>({...f,nom:e.target.value}))}/></div>
                 <div><div style={S.lbl}>Code</div><input type="password" style={S.inp} value={nU.code} onChange={e=>setNU(f=>({...f,code:e.target.value}))}/></div>
                 <div><div style={S.lbl}>Rôle</div><select style={S.inp} value={nU.role} onChange={e=>setNU(f=>({...f,role:e.target.value}))}><option value="membre">Membre</option><option value="admin">Admin</option></select></div>
@@ -1604,16 +1653,16 @@ function BigbrotherView({logs,users,bbFilter,setBBFilter}){
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
+      <div data-mobile="bb-header" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
           <h3 style={{fontSize:16,fontWeight:600,margin:0,color:C.text}}>👁 Bigbrother</h3>
-          <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:"rgba(224,85,85,0.15)",color:C.red,border:"1px solid rgba(224,85,85,0.3)",fontWeight:600,letterSpacing:"0.04em"}}>ADMIN ONLY</span>
+          <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:"rgba(224,85,85,0.15)",color:C.red,border:"1px solid rgba(224,85,85,0.3)",fontWeight:600,letterSpacing:"0.04em",whiteSpace:"nowrap"}}>ADMIN ONLY</span>
         </div>
         <span style={{fontSize:10,color:C.muted}}>Journal des 30 derniers jours · auto-nettoyage</span>
       </div>
 
       <div style={{...card,marginBottom:12,padding:12}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 110px 110px",gap:8,marginBottom:10}}>
+        <div data-mobile="bb-filters" style={{display:"grid",gridTemplateColumns:"1fr 1fr 110px 110px",gap:8,marginBottom:10}}>
           <div>
             <div style={S.lbl}>Utilisateur</div>
             <select style={S.inp} value={bbFilter.user} onChange={e=>setBBFilter(f=>({...f,user:e.target.value}))}>
@@ -1660,7 +1709,7 @@ function BigbrotherView({logs,users,bbFilter,setBBFilter}){
             return (
               <div key={i} style={{display:"flex",gap:10,padding:"10px 14px",borderBottom:i<filtered.length-1?"1px solid #404040":"none",alignItems:"flex-start"}}>
                 <div style={{flexShrink:0,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,background:cat.bg,color:cat.color}}>{cat.icon}</div>
-                <div style={{flex:1,minWidth:0}}>
+                <div style={{flex:1,minWidth:0,wordBreak:"break-word"}}>
                   <div style={{fontSize:13,color:C.text,marginBottom:2,lineHeight:1.5}}>
                     <strong style={{color:cat.color}}>{l.user_nom}</strong>{" "}
                     <span dangerouslySetInnerHTML={{__html:msgHtml}}/>
