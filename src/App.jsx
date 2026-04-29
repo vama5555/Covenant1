@@ -723,8 +723,10 @@ function Main({cu,setCu,onLogout}){
   },[tx.qtes,aPct,aItems]);
 
   const totPoids=useMemo(()=>{
-    return aItems.reduce((s,it)=>s+(+(it.poids)||0)*(+(tx.qtes[it.id])||0),0);
-  },[tx.qtes,aItems]);
+    const poidsObjets = aItems.reduce((s,it)=>s+(+(it.poids)||0)*(+(tx.qtes[it.id])||0),0);
+    const poidsLiasses = (+(tx.liasseQte)||0)*0.1; // 1 liasse = 0.1 Kg
+    return poidsObjets + poidsLiasses;
+  },[tx.qtes,aItems,tx.liasseQte]);
 
   const totLia  = aLiasse*(+(tx.liasseQte)||0);
   const totArg  = tx.dest==="pm"?Math.round((+(tx.argentSale)||0)*0.4):0;
@@ -740,7 +742,7 @@ function Main({cu,setCu,onLogout}){
     if(!totObj&&!totLia&&!totArg)return;
     const types=[]; const det={};
     if(totObj>0){types.push("objets");det.lignes=aItems.filter(it=>+(tx.qtes[it.id]||0)>0).map(it=>({nom:it.nom,prix:it.prix,qte:+(tx.qtes[it.id]),sous_total:it.prix*(+(tx.qtes[it.id]))*(aPct/100),poids:(+(it.poids)||0)*(+(tx.qtes[it.id]))}));}
-    if(totLia>0){types.push("liasses");det.liasse_qte=+(tx.liasseQte);det.taux_liasse=aLiasse;det.valeur_face=70*(+(tx.liasseQte));}
+    if(totLia>0){types.push("liasses");det.liasse_qte=+(tx.liasseQte);det.taux_liasse=aLiasse;det.valeur_face=70*(+(tx.liasseQte));det.poids_liasses=(+(tx.liasseQte))*0.1;}
     if(totArg>0&&tx.dest==="pm"){types.push("argent");det.argent_sale=+(tx.argentSale);}
     const mb=members.find(m=>m.id===tx.membreId)||null;
     const payload={
@@ -1576,7 +1578,7 @@ function Main({cu,setCu,onLogout}){
           <div style={{borderTop:"1px solid "+C.border,paddingTop:12,marginBottom:14}}>
             <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:tx.dest==="pm"?"1fr 1fr":"1fr",gap:14}}>
               <div>
-                <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{"Liasses"+(aLiasse>0?" · "+aLiasse+"$":"")}</div>
+                <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{"Liasses"+(aLiasse>0?" · "+aLiasse+"$":"")+" · 0.1 Kg/u"}</div>
                 <input type="number" min="0" placeholder="0 liasses" style={{width:"100%"}} value={tx.liasseQte} onChange={e=>setTx(f=>({...f,liasseQte:e.target.value}))}/>
               </div>
               {tx.dest==="pm"&&(
@@ -1623,7 +1625,9 @@ function Main({cu,setCu,onLogout}){
               const exp=!!expanded[h.id];
               const who=h.dest==="pm"?(h.pm_nom||"?")+" ("+(h.pm_cat||"?")+")": (h.gang_nom||"?")+" ("+(h.gang_cat||"?")+")";
               const tl=(h.types||[]).map(t=>t==="objets"?"Objets·"+(h.dest==="pm"?h.pm_pct:h.gang_pct)+"%":t==="liasses"?"Liasses·"+h.taux_liasse+"$":t==="argent"?"Argent·40%":"").filter(Boolean).join(" + ");
-              const totPoidsH=(h.lignes||[]).reduce((s,l)=>s+(+l.poids||0),0);
+              const poidsObjetsH=(h.lignes||[]).reduce((s,l)=>s+(+l.poids||0),0);
+              const poidsLiassesH = (+h.poids_liasses||0) || ((+h.liasse_qte||0)*0.1);
+              const totPoidsH = poidsObjetsH + poidsLiassesH;
               return(
                 <div key={h.id} style={card}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -1649,7 +1653,7 @@ function Main({cu,setCu,onLogout}){
                   {exp&&(
                     <div style={{borderTop:"1px solid "+C.border,paddingTop:8,marginTop:8,fontSize:12,color:C.muted}}>
                       {h.types?.includes("objets")&&(h.lignes||[]).map((l,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{l.nom} × {l.qte} ({fmt(l.prix)}/u){l.poids>0&&" · "+fmtKgD(l.poids)}</span><span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(l.sous_total))}</span></div>)}
-                      {h.types?.includes("liasses")&&<div style={{marginBottom:3}}>{h.liasse_qte} liasse{h.liasse_qte>1?"s":""} · face {fmt(h.valeur_face)} → <span style={{color:C.green,fontWeight:600}}>{fmt(h.taux_liasse*h.liasse_qte)}</span></div>}
+                      {h.types?.includes("liasses")&&<div style={{marginBottom:3}}>{h.liasse_qte} liasse{h.liasse_qte>1?"s":""} · face {fmt(h.valeur_face)} · {fmtKgD((h.liasse_qte||0)*0.1)} → <span style={{color:C.green,fontWeight:600}}>{fmt(h.taux_liasse*h.liasse_qte)}</span></div>}
                       {h.types?.includes("argent")&&<div style={{marginBottom:3}}>Argent sale : {fmt(h.argent_sale)} → <span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(h.argent_sale*0.4))}</span></div>}
                       {h.note&&<div style={{marginTop:6,fontStyle:"italic"}}>{h.note}</div>}
                     </div>
