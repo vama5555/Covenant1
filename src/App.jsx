@@ -35,7 +35,23 @@ const card={background:C.surface,border:"1px solid "+C.border,borderRadius:12,pa
 const S={card,inp:{width:"100%"},lbl:{fontSize:11,color:C.muted,marginBottom:3,fontWeight:500},sec:{fontSize:10,fontWeight:700,color:C.muted,margin:"0 0 14px",textTransform:"uppercase",letterSpacing:"0.12em"},row:{display:"flex",alignItems:"center",gap:8,marginBottom:8}};
 const G=`*{box-sizing:border-box;}select,input{background:#3a3a3a!important;border:1px solid #585858!important;border-radius:8px!important;padding:7px 11px!important;font-size:13px!important;color:#f0f0f0!important;outline:none!important;box-shadow:inset 0 1px 4px rgba(0,0,0,0.25)!important;font-family:inherit;transition:border-color .15s;}select{-webkit-appearance:auto!important;appearance:auto!important;cursor:pointer;}select:focus,input:focus{border-color:#888!important;}select option{background:#3a3a3a!important;color:#f0f0f0!important;}input::placeholder{color:#686868!important;}button{background:#3a3a3a;border:1px solid #585858;border-radius:8px;padding:5px 12px;font-size:13px;color:#f0f0f0;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.25);transition:background .12s,transform .08s;white-space:nowrap;flex-shrink:0;}button:hover{background:#484848;}button:active{transform:scale(0.97);}div,span,p,h1,h2,h3,label{color:inherit;}`;
 
-const PREVIEW=5; // Nombre d'items affichés par défaut dans les listes pliables Database
+const PREVIEW=5;
+
+// ── BIGBROTHER : helper pour logger toute action ──
+// Catégories : money, tx, items, apparts, laundry, access, settings
+async function logAction(userNom, category, action, message, details=null){
+  try{
+    await sb.from("audit_log").insert({
+      user_nom: userNom||"?",
+      category,
+      action,
+      message,
+      details: details||null
+    });
+  }catch(e){ /* On n'interrompt jamais le flux principal sur une erreur de log */ }
+}
+// Helper pour formater proprement les diffs de valeurs
+const diff = (a,b) => `<b>${a}</b> → <b>${b}</b>`; // Nombre d'items affichés par défaut dans les listes pliables Database
 
 function Bar({val,max,color}){const p=pv(val,max),c=color||(p>85?C.red:p>60?C.amber:C.green);return <div style={{background:C.surfaceAlt,borderRadius:6,height:6,overflow:"hidden",border:"1px solid "+C.border}}><div style={{width:p+"%",background:c,height:"100%",borderRadius:6,transition:"width .4s"}}/></div>;}
 function RoleBadge({role}){const a=role==="admin";return <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:600,background:a?"rgba(224,85,85,0.15)":"rgba(74,158,222,0.15)",color:a?C.red:C.blue,border:"1px solid "+(a?"rgba(224,85,85,0.3)":"rgba(74,158,222,0.3)")}}>{a?"Admin":"Membre"}</span>;}
@@ -212,12 +228,11 @@ function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
 }
 
 // ── Carte d'un compte membre avec save sur blur / Entrée ──
-function MemberCard({m,low,setMembers}){
+function MemberCard({m,low,setMembers,onLog}){
   const [val,setVal]=useState(String(m.solde));
-  const [status,setStatus]=useState(null); // null | "saving" | "saved" | "error"
+  const [status,setStatus]=useState(null);
   const [dirty,setDirty]=useState(false);
 
-  // Synchro si le membre est mis à jour ailleurs (ex: après une transaction)
   useEffect(()=>{
     if(!dirty) setVal(String(m.solde));
   },[m.solde,dirty]);
@@ -225,6 +240,7 @@ function MemberCard({m,low,setMembers}){
   async function save(){
     const s=Math.round(+val||0);
     if(s===m.solde){setDirty(false);return;}
+    const before=m.solde;
     setStatus("saving");
     const {error}=await sb.from("membres_comptes").update({solde:s}).eq("id",m.id);
     if(error){
@@ -236,6 +252,7 @@ function MemberCard({m,low,setMembers}){
     setDirty(false);
     setStatus("saved");
     setTimeout(()=>setStatus(null),1500);
+    if(onLog) onLog("money","balance_update",`a modifié le solde de <b>${m.nom}</b> : ${`<b>${fmt(before)}</b> → <b>${fmt(s)}</b>`}`);
   }
 
   return (
@@ -287,10 +304,15 @@ function Main({cu,setCu,onLogout}){
   const [users,setUsers]=useState([]);
   const [blanch,setBlanch]=useState(null);
   const [alertThreshold,setAlertThreshold]=useState(10000);
+  const [auditLogs,setAuditLogs]=useState([]);
 
   const loadAll=useCallback(async()=>{
     setLoading(true);
-    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st]=await Promise.all([
+    // Purge des logs > 30 jours (lancé en parallèle, on ne bloque pas)
+    const cutoff=new Date(Date.now()-30*24*3600*1000).toISOString();
+    sb.from("audit_log").delete().lt("created_at",cutoff).then(()=>{});
+
+    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st,al]=await Promise.all([
       sb.from("apparts").select("*").order("nom"),
       sb.from("categories_pm").select("*").order("pct_objets"),
       sb.from("categories_gang").select("*").order("pct_objets"),
@@ -303,6 +325,7 @@ function Main({cu,setCu,onLogout}){
       sb.from("users").select("*").order("nom"),
       sb.from("blanchiment").select("*").order("depot_at",{ascending:false}).limit(1),
       sb.from("app_settings").select("*").eq("key","alert_threshold").maybeSingle(),
+      sb.from("audit_log").select("*").order("created_at",{ascending:false}).limit(500),
     ]);
     setApparts(a.data||[]);
     setCatsPM(cpm.data||[]);
@@ -316,10 +339,18 @@ function Main({cu,setCu,onLogout}){
     setUsers(u.data||[]);
     setBlanch((bl.data&&bl.data[0])||null);
     if(st.data&&st.data.value)setAlertThreshold(+st.data.value||10000);
+    setAuditLogs(al.data||[]);
     setLoading(false);
   },[]);
 
   useEffect(()=>{loadAll();},[loadAll]);
+
+  // Helper local : log + ajout direct dans le state pour affichage immédiat
+  const log = useCallback(async (category, action, message, details=null) => {
+    const entry={user_nom:cu.nom, category, action, message, details:details||null, created_at:new Date().toISOString()};
+    setAuditLogs(prev=>[entry,...prev].slice(0,500));
+    logAction(cu.nom, category, action, message, details);
+  },[cu.nom]);
 
   const [dFrom,setDFrom]=useState(ago(7)); const [dTo,setDTo]=useState(today());
   const [hFrom,setHFrom]=useState(ago(7)); const [hTo,setHTo]=useState(today());
@@ -341,11 +372,19 @@ function Main({cu,setCu,onLogout}){
     const dep=new Date();
     const rec=new Date(dep.getTime()+blDuration(v)*3600000);
     const {data}=await sb.from("blanchiment").insert({montant:v,depot_at:dep.toISOString(),recup_at:rec.toISOString(),user_nom:cu.nom}).select().single();
-    if(data){setBlanch(data);setBlAmount("");}
+    if(data){
+      setBlanch(data);setBlAmount("");
+      log("laundry","start",`a démarré un blanchiment de <b>${fmt(v)}</b> (durée : ${blDuration(v)}h)`);
+    }
   }
-  async function collectBlanch(){
+  async function collectBlanch(canceled){
     if(!blanch)return;
+    const wasReady = (new Date(blanch.recup_at)).getTime() <= Date.now();
     await sb.from("blanchiment").delete().eq("id",blanch.id);
+    log("laundry", canceled?"cancel":(wasReady?"collect":"collect"),
+      canceled
+        ? `a annulé un blanchiment de <b>${fmt(blanch.montant)}</b>`
+        : `a récupéré un blanchiment de <b>${fmt(blanch.montant)}</b>`);
     setBlanch(null);
   }
 
@@ -400,6 +439,8 @@ function Main({cu,setCu,onLogout}){
     };
     await sb.from("transactions").insert(payload);
     if(mb) await sb.from("membres_comptes").update({solde:mb.solde-txTotal}).eq("id",mb.id);
+    const who=tx.dest==="pm"?(selPM?.nom||"?")+" · "+(selCatPM?.nom||"?"):(selGang?.nom||"?")+" · "+(selCatG?.nom||"?");
+    log("tx","create",`a enregistré une transaction ${tx.dest==="pm"?"PM":"Gang"} <b>${who}</b> · <b>${fmt(txTotal)}</b>${totPoids>0?" · "+fmtKgD(totPoids):""}${mb?" (payée par "+mb.nom+")":""}`);
     await loadAll();
     setTx(E0);
   }
@@ -412,6 +453,8 @@ function Main({cu,setCu,onLogout}){
       if(mb) await sb.from("membres_comptes").update({solde:mb.solde+h.total}).eq("id",mb.id);
     }
     await sb.from("transactions").delete().eq("id",id);
+    const who=h.dest==="pm"?(h.pm_nom||"?"):(h.gang_nom||"?");
+    log("tx","delete",`a supprimé une transaction ${h.dest==="pm"?"PM":"Gang"} <b>${who}</b> · <b>${fmt(h.total)}</b> du ${h.date}`);
     await loadAll();
     setConfirmDel(null);
   }
@@ -432,8 +475,34 @@ function Main({cu,setCu,onLogout}){
   },[apparts,apCatF,apSort]);
 
   async function updateAppart(id,fields){
+    const before=apparts.find(a=>a.id===id);
     await sb.from("apparts").update(fields).eq("id",id);
     setApparts(p=>p.map(a=>a.id===id?{...a,...fields}:a));
+    if(before){
+      const changes=Object.entries(fields).filter(([k,v])=>before[k]!==v);
+      if(changes.length>0){
+        const apName=fields.nom||before.nom;
+        // Cas spécifiques : modif coffre seul ou stock seul
+        if(changes.length===1&&changes[0][0]==="coffre"){
+          log("apparts","update_coffre",`a modifié le coffre de <b>${apName}</b> : ${diff(fmt(before.coffre),fmt(fields.coffre))}`);
+        } else if(changes.length===1&&changes[0][0]==="stock"){
+          log("apparts","update_stock",`a modifié le stock de <b>${apName}</b> : ${diff(fmtKg(before.stock),fmtKg(fields.stock))}`);
+        } else {
+          // Modif générique multi-champs
+          const lst=changes.map(([k,v])=>{
+            if(k==="nom")return `nom : ${diff(before[k],v)}`;
+            if(k==="categorie")return `catégorie : ${diff(getCat(before[k]).label,getCat(v).label)}`;
+            if(k==="max_coffre")return `max coffre : ${diff(fmt(before[k]),fmt(v))}`;
+            if(k==="max_stock")return `max stock : ${diff(fmtKg(before[k]),fmtKg(v))}`;
+            if(k==="code")return `code : ${diff(before[k]||"—",v||"—")}`;
+            if(k==="coffre")return `coffre : ${diff(fmt(before[k]),fmt(v))}`;
+            if(k==="stock")return `stock : ${diff(fmtKg(before[k]),fmtKg(v))}`;
+            return `${k} : ${diff(before[k],v)}`;
+          }).join(" · ");
+          log("apparts","update",`a modifié l'appart <b>${apName}</b> : ${lst}`);
+        }
+      }
+    }
   }
 
   const dashH=useMemo(()=>history.filter(h=>h.date>=dFrom&&h.date<=dTo),[history,dFrom,dTo]);
@@ -469,6 +538,9 @@ function Main({cu,setCu,onLogout}){
   // États "Voir tout / Réduire" pour les listes pliables Database
   const [showAll,setShowAll]=useState({itemsPM:false,itemsG:false,members:false,apparts:false});
 
+  // Filtres Bigbrother
+  const [bbFilter,setBBFilter]=useState({user:"",cat:"",from:ago(30),to:today(),search:""});
+
   const [pwd,setPwd]=useState({cur:"",neu:"",conf:""});
   const [pwdMsg,setPwdMsg]=useState(null);
   async function changePwd(){
@@ -484,6 +556,7 @@ function Main({cu,setCu,onLogout}){
     setPwd({cur:"",neu:"",conf:""});
     setPwdMsg({t:"ok",m:"Code modifié avec succès"});
     setTimeout(()=>setPwdMsg(null),3500);
+    log("access","password_change",`a changé son code d'accès`);
   }
 
   // Sauvegarde du seuil d'alerte
@@ -493,11 +566,13 @@ function Main({cu,setCu,onLogout}){
   async function saveThreshold(){
     setThresholdMsg(null);
     const v=Math.max(0,Math.round(+thresholdInput||0));
+    const old=alertThreshold;
     const {error}=await sb.from("app_settings").upsert({key:"alert_threshold",value:String(v)},{onConflict:"key"});
     if(error){setThresholdMsg({t:"err",m:"Erreur : "+error.message});return;}
     setAlertThreshold(v);
     setThresholdMsg({t:"ok",m:"Seuil sauvegardé : "+fmt(v)});
     setTimeout(()=>setThresholdMsg(null),3000);
+    if(old!==v) log("settings","threshold",`a modifié le seuil d'alerte solde : ${diff(fmt(old),fmt(v))}`);
   }
 
   const fileRefPM=useRef(null);
@@ -585,7 +660,6 @@ function Main({cu,setCu,onLogout}){
     const table=target==="items_pm"?"items_pm":target==="items_gang"?"items_gang":target==="users"?"users":"pms";
     if(mode==="replace"){
       if(target==="users"){
-        // On ne supprime PAS l'utilisateur courant pour ne pas se déconnecter
         await sb.from(table).delete().neq("id",cu.id);
       } else {
         await sb.from(table).delete().neq("id","00000000-0000-0000-0000-000000000000");
@@ -596,6 +670,11 @@ function Main({cu,setCu,onLogout}){
     else if(target==="items_gang")setItemsG(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
     else if(target==="users")setUsers(mode==="replace"?[cu,...(data||[])]:p=>[...p,...(data||[])]);
     else setPMs(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
+
+    const cat = target==="users" ? "access" : target==="pms" ? "items" : "items";
+    const targetLabel = target==="items_pm"?"items PM":target==="items_gang"?"items gangs":target==="users"?"accès":"petites mains";
+    log(cat,"import",`a importé <b>${items.length} ${targetLabel}</b> (mode : ${mode==="replace"?"écrasement":"ajout"})`);
+
     setImportDlg(null);
   }
 
@@ -610,15 +689,45 @@ function Main({cu,setCu,onLogout}){
     const newVal=!(item.visible!==false);
     await sb.from(table).update({visible:newVal}).eq("id",item.id);
     setItems(is=>is.map(x=>x.id===item.id?{...x,visible:newVal}:x));
+    log("items",newVal?"unhide":"hide",`a ${newVal?"affiché":"masqué"} l'item <b>${item.nom}</b> ${newVal?"👁":"🚫"}`);
   }
 
-  const TABS=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
-  const ns=id=>({padding:"10px 15px",fontSize:13,fontWeight:tab===id?600:400,color:tab===id?C.text:C.muted,borderBottom:tab===id?"2px solid "+C.text:"2px solid transparent",background:"none",border:"none",cursor:"pointer",borderRadius:0,whiteSpace:"nowrap",boxShadow:"none"});
+  const TABS_BASE=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
+  const TABS=isAdmin?[...TABS_BASE,{id:"bigbrother",label:"👁 Bigbrother",admin:true}]:TABS_BASE;
+  const ns=id=>{
+    const isBB=id==="bigbrother";
+    return {padding:"10px 15px",fontSize:13,fontWeight:tab===id?600:400,color:tab===id?(isBB?C.red:C.text):(isBB?"rgba(224,85,85,0.7)":C.muted),borderBottom:tab===id?"2px solid "+(isBB?C.red:C.text):"2px solid transparent",background:"none",border:"none",cursor:"pointer",borderRadius:0,whiteSpace:"nowrap",boxShadow:"none"};
+  };
 
   function CatTable({cats,setCats,table,eId,setEId,nc,setNc}){
-    async function save(c){await sb.from(table).update({nom:c.nom,pct_objets:c.pct_objets,taux_liasse:c.taux_liasse}).eq("id",c.id);setCats(cs=>cs.map(x=>x.id===c.id?c:x));setEId(null);}
-    async function add(){if(!nc.nom)return;const{data}=await sb.from(table).insert({nom:nc.nom,pct_objets:+nc.pct_objets,taux_liasse:+nc.taux_liasse}).select().single();if(data)setCats(p=>[...p,data]);setNc({nom:"",pct_objets:"",taux_liasse:""});}
-    async function del(id){await sb.from(table).delete().eq("id",id);setCats(cs=>cs.filter(x=>x.id!==id));}
+    const isPM=table==="categories_pm";
+    async function save(c){
+      const before=cats.find(x=>x.id===c.id);
+      await sb.from(table).update({nom:c.nom,pct_objets:c.pct_objets,taux_liasse:c.taux_liasse}).eq("id",c.id);
+      setCats(cs=>cs.map(x=>x.id===c.id?c:x));setEId(null);
+      if(before){
+        const ch=[];
+        if(before.nom!==c.nom)ch.push(`nom : ${diff(before.nom,c.nom)}`);
+        if(+before.pct_objets!==+c.pct_objets)ch.push(`% objets : ${diff(before.pct_objets+"%",c.pct_objets+"%")}`);
+        if(+before.taux_liasse!==+c.taux_liasse)ch.push(`$/liasse : ${diff(fmt(before.taux_liasse),fmt(c.taux_liasse))}`);
+        if(ch.length>0) log("settings","cat_update",`a modifié la catégorie ${isPM?"PM":"gang"} <b>${c.nom}</b> · ${ch.join(" · ")}`);
+      }
+    }
+    async function add(){
+      if(!nc.nom)return;
+      const{data}=await sb.from(table).insert({nom:nc.nom,pct_objets:+nc.pct_objets,taux_liasse:+nc.taux_liasse}).select().single();
+      if(data){
+        setCats(p=>[...p,data]);
+        log("settings","cat_create",`a créé la catégorie ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${data.pct_objets}% · ${fmt(data.taux_liasse)}/liasse`);
+      }
+      setNc({nom:"",pct_objets:"",taux_liasse:""});
+    }
+    async function del(id){
+      const c=cats.find(x=>x.id===id);
+      await sb.from(table).delete().eq("id",id);
+      setCats(cs=>cs.filter(x=>x.id!==id));
+      if(c) log("settings","cat_delete",`a supprimé la catégorie ${isPM?"PM":"gang"} <b>${c.nom}</b>`);
+    }
     return <>
       <div style={{display:"grid",gridTemplateColumns:"1fr 80px 90px auto",gap:8,marginBottom:8}}><span style={S.lbl}>Nom</span><span style={S.lbl}>% objets</span><span style={S.lbl}>$/liasse</span><span/></div>
       {cats.map(c=>(
@@ -639,9 +748,37 @@ function Main({cu,setCu,onLogout}){
   }
 
   function PMList(){
-    async function save(p){await sb.from("pms").update({nom:p.nom,categorie_id:p.categorie_id}).eq("id",p.id);setPMs(ps=>ps.map(x=>x.id===p.id?p:x));setEPM(null);}
-    async function add(){if(!nPM.nom||!nPM.categorie_id)return;const{data}=await sb.from("pms").insert({nom:nPM.nom,categorie_id:nPM.categorie_id}).select().single();if(data)setPMs(p=>[...p,data]);setNPM({nom:"",categorie_id:""});}
-    async function del(id){await sb.from("pms").delete().eq("id",id);setPMs(ps=>ps.filter(x=>x.id!==id));}
+    async function save(p){
+      const before=pms.find(x=>x.id===p.id);
+      await sb.from("pms").update({nom:p.nom,categorie_id:p.categorie_id}).eq("id",p.id);
+      setPMs(ps=>ps.map(x=>x.id===p.id?p:x));setEPM(null);
+      if(before){
+        const ch=[];
+        if(before.nom!==p.nom)ch.push(`nom : ${diff(before.nom,p.nom)}`);
+        if(before.categorie_id!==p.categorie_id){
+          const oldCat=catsPM.find(c=>c.id===before.categorie_id)?.nom||"?";
+          const newCat=catsPM.find(c=>c.id===p.categorie_id)?.nom||"?";
+          ch.push(`catégorie : ${diff(oldCat,newCat)}`);
+        }
+        if(ch.length>0) log("items","pm_update",`a modifié la PM <b>${p.nom}</b> · ${ch.join(" · ")}`);
+      }
+    }
+    async function add(){
+      if(!nPM.nom||!nPM.categorie_id)return;
+      const{data}=await sb.from("pms").insert({nom:nPM.nom,categorie_id:nPM.categorie_id}).select().single();
+      if(data){
+        setPMs(p=>[...p,data]);
+        const cat=catsPM.find(c=>c.id===data.categorie_id)?.nom||"?";
+        log("items","pm_create",`a créé la PM <b>${data.nom}</b> (catégorie : ${cat})`);
+      }
+      setNPM({nom:"",categorie_id:""});
+    }
+    async function del(id){
+      const p=pms.find(x=>x.id===id);
+      await sb.from("pms").delete().eq("id",id);
+      setPMs(ps=>ps.filter(x=>x.id!==id));
+      if(p) log("items","pm_delete",`a supprimé la PM <b>${p.nom}</b>`);
+    }
     return <>
       <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
         <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
@@ -666,9 +803,37 @@ function Main({cu,setCu,onLogout}){
   }
 
   function GangList(){
-    async function save(p){await sb.from("gangs").update({nom:p.nom,categorie_id:p.categorie_id}).eq("id",p.id);setGangs(ps=>ps.map(x=>x.id===p.id?p:x));setEGa(null);}
-    async function add(){if(!nGa.nom||!nGa.categorie_id)return;const{data}=await sb.from("gangs").insert({nom:nGa.nom,categorie_id:nGa.categorie_id}).select().single();if(data)setGangs(p=>[...p,data]);setNGa({nom:"",categorie_id:""});}
-    async function del(id){await sb.from("gangs").delete().eq("id",id);setGangs(ps=>ps.filter(x=>x.id!==id));}
+    async function save(p){
+      const before=gangs.find(x=>x.id===p.id);
+      await sb.from("gangs").update({nom:p.nom,categorie_id:p.categorie_id}).eq("id",p.id);
+      setGangs(ps=>ps.map(x=>x.id===p.id?p:x));setEGa(null);
+      if(before){
+        const ch=[];
+        if(before.nom!==p.nom)ch.push(`nom : ${diff(before.nom,p.nom)}`);
+        if(before.categorie_id!==p.categorie_id){
+          const oldCat=catsGang.find(c=>c.id===before.categorie_id)?.nom||"?";
+          const newCat=catsGang.find(c=>c.id===p.categorie_id)?.nom||"?";
+          ch.push(`catégorie : ${diff(oldCat,newCat)}`);
+        }
+        if(ch.length>0) log("items","gang_update",`a modifié le gang <b>${p.nom}</b> · ${ch.join(" · ")}`);
+      }
+    }
+    async function add(){
+      if(!nGa.nom||!nGa.categorie_id)return;
+      const{data}=await sb.from("gangs").insert({nom:nGa.nom,categorie_id:nGa.categorie_id}).select().single();
+      if(data){
+        setGangs(p=>[...p,data]);
+        const cat=catsGang.find(c=>c.id===data.categorie_id)?.nom||"?";
+        log("items","gang_create",`a créé le gang <b>${data.nom}</b> (catégorie : ${cat})`);
+      }
+      setNGa({nom:"",categorie_id:""});
+    }
+    async function del(id){
+      const p=gangs.find(x=>x.id===id);
+      await sb.from("gangs").delete().eq("id",id);
+      setGangs(ps=>ps.filter(x=>x.id!==id));
+      if(p) log("items","gang_delete",`a supprimé le gang <b>${p.nom}</b>`);
+    }
     return <>
       {gangs.map(p=>(
         <div key={p.id} style={S.row}>
@@ -688,19 +853,36 @@ function Main({cu,setCu,onLogout}){
 
   // ── Liste d'items avec œil + poids (avec affichage partiel) ──
   function IList({items,setItems,table,eId,setEId,ni,setNi,canEdit,target,allKey}){
+    const isPM=table==="items_pm";
     async function save(it){
+      const before=items.find(x=>x.id===it.id);
       await sb.from(table).update({nom:it.nom,prix:it.prix,poids:+it.poids||0}).eq("id",it.id);
       setItems(is=>is.map(x=>x.id===it.id?it:x));
       setEId(null);
+      if(before){
+        const ch=[];
+        if(before.nom!==it.nom)ch.push(`nom : ${diff(before.nom,it.nom)}`);
+        if(+before.prix!==+it.prix)ch.push(`prix : ${diff(fmt(before.prix),fmt(it.prix))}`);
+        if(+(before.poids||0)!==+(it.poids||0))ch.push(`poids : ${diff(fmtKgD(before.poids||0),fmtKgD(it.poids||0))}`);
+        if(ch.length>0) log("items","update",`a modifié l'item ${isPM?"PM":"gang"} <b>${it.nom}</b> · ${ch.join(" · ")}`);
+      }
     }
     async function add(){
       if(!ni.nom||!ni.prix)return;
       const payload={nom:ni.nom,prix:+ni.prix,poids:+ni.poids||0,visible:true};
       const{data}=await sb.from(table).insert(payload).select().single();
-      if(data)setItems(p=>[...p,data]);
+      if(data){
+        setItems(p=>[...p,data]);
+        log("items","create",`a créé l'item ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${fmt(data.prix)}${data.poids>0?" · "+fmtKgD(data.poids):""}`);
+      }
       setNi({nom:"",prix:"",poids:""});
     }
-    async function del(id){await sb.from(table).delete().eq("id",id);setItems(is=>is.filter(x=>x.id!==id));}
+    async function del(id){
+      const it=items.find(x=>x.id===id);
+      await sb.from(table).delete().eq("id",id);
+      setItems(is=>is.filter(x=>x.id!==id));
+      if(it) log("items","delete",`a supprimé l'item ${isPM?"PM":"gang"} <b>${it.nom}</b>`);
+    }
 
     const visibleCount=items.filter(it=>it.visible!==false).length;
     const isAll=showAll[allKey];
@@ -791,13 +973,18 @@ function Main({cu,setCu,onLogout}){
       code:nAp.code||""
     };
     const {data}=await sb.from("apparts").insert(payload).select().single();
-    if(data)setApparts(p=>[...p,data]);
+    if(data){
+      setApparts(p=>[...p,data]);
+      log("apparts","create",`a créé l'appart <b>${data.nom}</b> (${getCat(data.categorie).label} · max ${fmt(data.max_coffre)} / ${fmtKg(data.max_stock)})`);
+    }
     setNAp({nom:"",categorie:"recel",max_coffre:"",max_stock:"",code:""});
   }
   async function delAppart(id){
     if(!confirm("Supprimer cet appart définitivement ?"))return;
+    const ap=apparts.find(a=>a.id===id);
     await sb.from("apparts").delete().eq("id",id);
     setApparts(p=>p.filter(a=>a.id!==id));
+    if(ap) log("apparts","delete",`a supprimé l'appart <b>${ap.nom}</b>`);
   }
   async function saveAppartEdit(){
     if(!eApId)return;
@@ -1021,7 +1208,7 @@ function Main({cu,setCu,onLogout}){
                     <Bar val={blPct} max={100} color={blReady?C.green:C.amber}/>
                   </div>
                   <button onClick={collectBlanch} disabled={!blReady} style={{padding:"7px 16px",fontWeight:700,background:blReady?C.green:"#3a3a3a",color:blReady?"#1a1a1a":C.muted,border:"none",cursor:blReady?"pointer":"not-allowed",opacity:blReady?1:0.6}}>Récupérer</button>
-                  {isAdmin&&<button onClick={()=>{if(confirm("Annuler le dépôt en cours ?"))collectBlanch();}} style={{color:C.red,fontSize:11,padding:"4px 10px"}}>Annuler</button>}
+                  {isAdmin&&<button onClick={()=>{if(confirm("Annuler le dépôt en cours ?"))collectBlanch(true);}} style={{color:C.red,fontSize:11,padding:"4px 10px"}}>Annuler</button>}
                 </div>
               </div>
             )}
@@ -1032,7 +1219,7 @@ function Main({cu,setCu,onLogout}){
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:10}}>
             {members.map(m=>{
               const low=m.solde<alertThreshold;
-              return <MemberCard key={m.id} m={m} low={low} setMembers={setMembers}/>;
+              return <MemberCard key={m.id} m={m} low={low} setMembers={setMembers} onLog={log}/>;
             })}
           </div>
         </div>
@@ -1282,7 +1469,7 @@ function Main({cu,setCu,onLogout}){
                 <div key={m.id} style={S.row}>
                   <span style={{flex:1,fontSize:14}}>{m.nom}</span>
                   <span style={{fontSize:13,color:m.solde<alertThreshold?C.red:C.muted,fontWeight:m.solde<alertThreshold?600:400}}>{fmt(m.solde)}</span>
-                  <button onClick={async()=>{await sb.from("membres_comptes").delete().eq("id",m.id);setMembers(ms=>ms.filter(x=>x.id!==m.id));}} style={{color:C.red}}>Suppr.</button>
+                  <button onClick={async()=>{await sb.from("membres_comptes").delete().eq("id",m.id);setMembers(ms=>ms.filter(x=>x.id!==m.id));log("money","balance_delete",`a supprimé le compte <b>${m.nom}</b> (solde ${fmt(m.solde)})`);}} style={{color:C.red}}>Suppr.</button>
                 </div>
               ))}
               {members.length>PREVIEW&&(
@@ -1295,7 +1482,7 @@ function Main({cu,setCu,onLogout}){
               <div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
                 <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} value={nBM.nom} onChange={e=>setNBM(f=>({...f,nom:e.target.value}))}/></div>
                 <div><div style={S.lbl}>Solde ($)</div><input type="number" style={{width:90}} value={nBM.solde} onChange={e=>setNBM(f=>({...f,solde:e.target.value}))}/></div>
-                <button onClick={async()=>{if(!nBM.nom)return;const{data}=await sb.from("membres_comptes").insert({nom:nBM.nom,solde:+nBM.solde||0}).select().single();if(data)setMembers(p=>[...p,data]);setNBM({nom:"",solde:""});}} style={{fontWeight:700}}>+</button>
+                <button onClick={async()=>{if(!nBM.nom)return;const{data}=await sb.from("membres_comptes").insert({nom:nBM.nom,solde:+nBM.solde||0}).select().single();if(data){setMembers(p=>[...p,data]);log("money","balance_create",`a créé le compte <b>${data.nom}</b> (solde initial : ${fmt(data.solde)})`);}setNBM({nom:"",solde:""});}} style={{fontWeight:700}}>+</button>
               </div>
             </div>
           )}
@@ -1347,20 +1534,148 @@ function Main({cu,setCu,onLogout}){
                   <span style={{flex:1,fontSize:14}}>{u.nom}</span>
                   <RoleBadge role={u.role}/>
                   <span style={{fontSize:12,color:C.muted,fontFamily:"monospace"}}>{"•".repeat(u.code.length)}</span>
-                  {u.id!==cu.id&&<button onClick={async()=>{await sb.from("users").delete().eq("id",u.id);setUsers(us=>us.filter(x=>x.id!==u.id));}} style={{color:C.red}}>Suppr.</button>}
+                  {u.id!==cu.id&&<button onClick={async()=>{await sb.from("users").delete().eq("id",u.id);setUsers(us=>us.filter(x=>x.id!==u.id));log("access","user_delete",`a supprimé l'accès <b>${u.nom}</b> (rôle : ${u.role})`);}} style={{color:C.red}}>Suppr.</button>}
                 </div>
               ))}
               <div style={{display:"grid",gridTemplateColumns:"1fr 100px 90px auto",gap:8,alignItems:"end",borderTop:"1px solid rgba(212,132,10,0.3)",paddingTop:10,marginTop:4}}>
                 <div><div style={S.lbl}>Nom</div><input style={S.inp} value={nU.nom} onChange={e=>setNU(f=>({...f,nom:e.target.value}))}/></div>
                 <div><div style={S.lbl}>Code</div><input type="password" style={S.inp} value={nU.code} onChange={e=>setNU(f=>({...f,code:e.target.value}))}/></div>
                 <div><div style={S.lbl}>Rôle</div><select style={S.inp} value={nU.role} onChange={e=>setNU(f=>({...f,role:e.target.value}))}><option value="membre">Membre</option><option value="admin">Admin</option></select></div>
-                <button onClick={async()=>{if(!nU.nom||!nU.code)return;const{data}=await sb.from("users").insert({nom:nU.nom,code:nU.code,role:nU.role}).select().single();if(data)setUsers(p=>[...p,data]);setNU({nom:"",code:"",role:"membre"});}} style={{fontWeight:700,alignSelf:"end"}}>+</button>
+                <button onClick={async()=>{if(!nU.nom||!nU.code)return;const{data}=await sb.from("users").insert({nom:nU.nom,code:nU.code,role:nU.role}).select().single();if(data){setUsers(p=>[...p,data]);log("access","user_create",`a créé l'accès <b>${data.nom}</b> (rôle : ${data.role})`);}setNU({nom:"",code:"",role:"membre"});}} style={{fontWeight:700,alignSelf:"end"}}>+</button>
               </div>
               <div style={{marginTop:10,fontSize:10,color:C.muted,fontStyle:"italic"}}>Format CSV import : <code style={{background:C.surfaceAlt,padding:"1px 5px",borderRadius:3,fontFamily:"monospace"}}>nom;code;role</code> (role = admin ou membre)</div>
             </div>
           )}
         </div>
       )}
+
+      {/* ═══ BIGBROTHER (admin only) ═══ */}
+      {tab==="bigbrother"&&isAdmin&&(
+        <BigbrotherView logs={auditLogs} users={users} bbFilter={bbFilter} setBBFilter={setBBFilter}/>
+      )}
+    </div>
+  );
+}
+
+// ── Composant onglet Bigbrother ──────────────────────────────────────────
+function BigbrotherView({logs,users,bbFilter,setBBFilter}){
+  const CAT_META={
+    money:    {icon:"💰",bg:"rgba(61,191,143,0.15)", color:"#3dbf8f",label:"Argent"},
+    tx:       {icon:"📋",bg:"rgba(224,85,85,0.15)",  color:"#e05555",label:"Transaction"},
+    items:    {icon:"📦",bg:"rgba(96,165,250,0.15)", color:"#60A5FA",label:"Items"},
+    apparts:  {icon:"🏠",bg:"rgba(192,132,252,0.15)",color:"#C084FC",label:"Apparts"},
+    laundry:  {icon:"🧺",bg:"rgba(212,146,10,0.15)", color:"#d4920a",label:"Blanchiment"},
+    access:   {icon:"👤",bg:"rgba(160,160,160,0.2)", color:"#a0a0a0",label:"Accès"},
+    settings: {icon:"⚙️",bg:"rgba(160,160,160,0.2)", color:"#a0a0a0",label:"Paramètres"},
+  };
+  const fmtBBDate = d => {
+    const x=new Date(d);
+    return x.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit"})+" "+x.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  };
+
+  const filtered=useMemo(()=>{
+    const fromTs=bbFilter.from?new Date(bbFilter.from).getTime():0;
+    const toTs=bbFilter.to?new Date(bbFilter.to+"T23:59:59").getTime():Date.now()+86400000;
+    const q=bbFilter.search.toLowerCase().trim();
+    return logs.filter(l=>{
+      if(bbFilter.user&&l.user_nom!==bbFilter.user)return false;
+      if(bbFilter.cat&&l.category!==bbFilter.cat)return false;
+      const ts=new Date(l.created_at).getTime();
+      if(ts<fromTs||ts>toTs)return false;
+      if(q){
+        const stripped=String(l.message||"").replace(/<[^>]*>/g,"");
+        const t=(l.user_nom+" "+stripped+" "+(CAT_META[l.category]?.label||"")).toLowerCase();
+        if(!t.includes(q))return false;
+      }
+      return true;
+    });
+  },[logs,bbFilter]);
+
+  function highlight(html,q){
+    if(!q)return html;
+    const re=new RegExp("("+q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")","gi");
+    // On évite de remplacer dans les balises HTML existantes — split simple sur les balises
+    return html.replace(/(>[^<]*<|^[^<]*<|>[^<]*$)/g, m=>m.replace(re,'<mark style="background:rgba(90,174,232,0.35);color:#f0f0f0;padding:0 2px;border-radius:2px;">$1</mark>'));
+  }
+
+  function clearFilters(){
+    setBBFilter({user:"",cat:"",from:ago(30),to:today(),search:""});
+  }
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <h3 style={{fontSize:16,fontWeight:600,margin:0,color:C.text}}>👁 Bigbrother</h3>
+          <span style={{fontSize:10,padding:"2px 8px",borderRadius:4,background:"rgba(224,85,85,0.15)",color:C.red,border:"1px solid rgba(224,85,85,0.3)",fontWeight:600,letterSpacing:"0.04em"}}>ADMIN ONLY</span>
+        </div>
+        <span style={{fontSize:10,color:C.muted}}>Journal des 30 derniers jours · auto-nettoyage</span>
+      </div>
+
+      <div style={{...card,marginBottom:12,padding:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 110px 110px",gap:8,marginBottom:10}}>
+          <div>
+            <div style={S.lbl}>Utilisateur</div>
+            <select style={S.inp} value={bbFilter.user} onChange={e=>setBBFilter(f=>({...f,user:e.target.value}))}>
+              <option value="">Tous</option>
+              {users.map(u=><option key={u.id} value={u.nom}>{u.nom}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={S.lbl}>Catégorie</div>
+            <select style={S.inp} value={bbFilter.cat} onChange={e=>setBBFilter(f=>({...f,cat:e.target.value}))}>
+              <option value="">Toutes</option>
+              <option value="money">💰 Argent / Comptes</option>
+              <option value="tx">📋 Transactions</option>
+              <option value="items">📦 Items</option>
+              <option value="apparts">🏠 Apparts</option>
+              <option value="laundry">🧺 Blanchiment</option>
+              <option value="access">👤 Accès</option>
+              <option value="settings">⚙️ Paramètres</option>
+            </select>
+          </div>
+          <div>
+            <div style={S.lbl}>Du</div>
+            <input type="date" style={S.inp} value={bbFilter.from} onChange={e=>setBBFilter(f=>({...f,from:e.target.value}))}/>
+          </div>
+          <div>
+            <div style={S.lbl}>Au</div>
+            <input type="date" style={S.inp} value={bbFilter.to} onChange={e=>setBBFilter(f=>({...f,to:e.target.value}))}/>
+          </div>
+        </div>
+        <input type="text" placeholder="🔍 Recherche libre (nom, item, montant...)" value={bbFilter.search} onChange={e=>setBBFilter(f=>({...f,search:e.target.value}))} style={{fontSize:13,padding:"7px 11px"}}/>
+      </div>
+
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,fontSize:11,color:C.muted}}>
+        <span>{filtered.length} action{filtered.length>1?"s":""} trouvée{filtered.length>1?"s":""}</span>
+        <button onClick={clearFilters} style={{fontSize:10,padding:"3px 8px"}}>Réinitialiser filtres</button>
+      </div>
+
+      <div style={{...card,padding:0,overflow:"hidden"}}>
+        {filtered.length===0
+          ?<div style={{textAlign:"center",padding:40,color:C.muted,fontSize:12,fontStyle:"italic"}}>Aucune action trouvée</div>
+          :filtered.map((l,i)=>{
+            const cat=CAT_META[l.category]||{icon:"•",bg:"rgba(160,160,160,0.2)",color:"#a0a0a0",label:l.category};
+            const msgHtml=highlight(l.message||"",bbFilter.search);
+            return (
+              <div key={i} style={{display:"flex",gap:10,padding:"10px 14px",borderBottom:i<filtered.length-1?"1px solid #404040":"none",alignItems:"flex-start"}}>
+                <div style={{flexShrink:0,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,background:cat.bg,color:cat.color}}>{cat.icon}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,color:C.text,marginBottom:2,lineHeight:1.5}}>
+                    <strong style={{color:cat.color}}>{l.user_nom}</strong>{" "}
+                    <span dangerouslySetInnerHTML={{__html:msgHtml}}/>
+                  </div>
+                  <div style={{fontSize:10,color:"#686868",display:"flex",gap:6,alignItems:"center"}}>
+                    <span>{fmtBBDate(l.created_at)}</span>
+                    <span style={{opacity:0.5}}>·</span>
+                    <span style={{padding:"1px 6px",background:cat.bg,color:cat.color,borderRadius:3,fontWeight:600,letterSpacing:"0.04em",fontSize:9,textTransform:"uppercase"}}>{cat.label}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        }
+      </div>
     </div>
   );
 }
