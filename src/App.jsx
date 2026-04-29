@@ -408,7 +408,7 @@ function Main({cu,setCu,onLogout}){
   const [nAp,setNAp]=useState({nom:"",categorie:"recel",max_coffre:"",max_stock:"",code:""});
 
   // États "Voir tout / Réduire" pour les listes pliables Database
-  const [showAll,setShowAll]=useState({itemsPM:false,itemsG:false,members:false});
+  const [showAll,setShowAll]=useState({itemsPM:false,itemsG:false,members:false,apparts:false});
 
   const [pwd,setPwd]=useState({cur:"",neu:"",conf:""});
   const [pwdMsg,setPwdMsg]=useState(null);
@@ -596,11 +596,13 @@ function Main({cu,setCu,onLogout}){
           }
         </div>
       ))}
-      {isAdmin&&<div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+      {/* Ajout autorisé pour TOUS (admin et membre) */}
+      <div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
         <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nPM.nom} onChange={e=>setNPM(f=>({...f,nom:e.target.value}))}/></div>
         <div><div style={S.lbl}>Catégorie</div><select value={nPM.categorie_id||""} onChange={e=>setNPM(f=>({...f,categorie_id:e.target.value}))}><option value="">—</option>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
-        <button onClick={add} style={{fontWeight:700}}>+</button>
-      </div>}
+        <button onClick={add} style={{fontWeight:700,color:C.green}}>+ Ajouter</button>
+      </div>
+      {!isAdmin&&<div style={{fontSize:10,color:C.muted,marginTop:6,fontStyle:"italic"}}>💡 Tu peux ajouter de nouvelles PM. La modification et la suppression sont réservées aux admins.</div>}
     </>;
   }
 
@@ -967,10 +969,7 @@ function Main({cu,setCu,onLogout}){
           </div>
 
           {/* COMPTES MEMBRES — police plus grosse + alerte rouge si solde < seuil */}
-          <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 10px"}}>
-            <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em"}}>Comptes membres</span>
-            <span style={{fontSize:10,color:C.muted}}>· seuil alerte : <strong style={{color:C.red}}>{fmt(alertThreshold)}</strong></span>
-          </div>
+          <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",margin:"18px 0 10px"}}>Comptes membres</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:10}}>
             {members.map(m=>{
               const low=m.solde<alertThreshold;
@@ -1159,7 +1158,7 @@ function Main({cu,setCu,onLogout}){
       {tab==="database"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={card}><div style={S.sec}>Catégories PM</div><CatTable cats={catsPM} setCats={setCatsPM} table="categories_pm" eId={eCPM} setEId={setECPM} nc={nCPM} setNc={setNCPM}/></div>
-          <div style={card}><div style={S.sec}>Petites mains{!isAdmin&&" · lecture seule"}</div><PMList/></div>
+          <div style={card}><div style={S.sec}>Petites mains</div><PMList/></div>
           <div style={card}><div style={S.sec}>Catégories gangs</div><CatTable cats={catsGang} setCats={setCatsGang} table="categories_gang" eId={eCG} setEId={setECG} nc={nCG} setNc={setNCG}/></div>
           <div style={card}><div style={S.sec}>Gangs{!isAdmin&&" · lecture seule"}</div><GangList/></div>
           <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm" allKey="itemsPM"/></div>
@@ -1167,8 +1166,11 @@ function Main({cu,setCu,onLogout}){
 
           {isAdmin&&(
             <div style={card}>
-              <div style={S.sec}>Apparts — gestion complète</div>
-              {apparts.map(a=>{
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div style={{...S.sec,margin:0}}>Apparts — gestion complète</div>
+                <span style={{fontSize:11,color:C.muted}}>{apparts.length} appart{apparts.length>1?"s":""}</span>
+              </div>
+              {(showAll.apparts?apparts:apparts.slice(0,PREVIEW)).map(a=>{
                 const ac=getCat(a.categorie);
                 const editing=eApId===a.id;
                 return (
@@ -1205,6 +1207,13 @@ function Main({cu,setCu,onLogout}){
                   </div>
                 );
               })}
+              {apparts.length>PREVIEW&&(
+                <div style={{textAlign:"center",margin:"6px 0 10px"}}>
+                  <button onClick={()=>setShowAll(s=>({...s,apparts:!s.apparts}))} style={{fontSize:11,padding:"5px 14px",background:"transparent",border:"1px dashed "+C.border,color:C.muted}}>
+                    {showAll.apparts?"Réduire ↑":`Voir tout (${apparts.length}) ↓`}
+                  </button>
+                </div>
+              )}
               <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed "+C.border}}>
                 <div style={S.lbl}>Ajouter un nouvel appart</div>
                 <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr auto",gap:6,alignItems:"end",marginTop:6}}>
