@@ -435,6 +435,63 @@ function AppartCard({a,updateAppart,copied,setCopied}){
   );
 }
 
+// ── Formulaires d'ajout STABLES (hors de Main) pour préserver le focus malgré Realtime ──
+function AddPMForm({catsPM,onAdd,isAdmin}){
+  const [nom,setNom]=useState("");
+  const [catId,setCatId]=useState("");
+  async function submit(){
+    if(!nom||!catId)return;
+    await onAdd(nom,catId);
+    setNom(""); setCatId("");
+  }
+  return (
+    <>
+      <div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+        <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+        <div><div style={S.lbl}>Catégorie</div><select value={catId} onChange={e=>setCatId(e.target.value)}><option value="">—</option>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
+        <button onClick={submit} style={{fontWeight:700,color:C.green}}>+ Ajouter</button>
+      </div>
+      {!isAdmin&&<div style={{fontSize:10,color:C.muted,marginTop:6,fontStyle:"italic"}}>💡 Tu peux ajouter de nouvelles PM. La modification et la suppression sont réservées aux admins.</div>}
+    </>
+  );
+}
+
+function AddGangForm({catsGang,onAdd}){
+  const [nom,setNom]=useState("");
+  const [catId,setCatId]=useState("");
+  async function submit(){
+    if(!nom||!catId)return;
+    await onAdd(nom,catId);
+    setNom(""); setCatId("");
+  }
+  return (
+    <div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+      <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+      <div><div style={S.lbl}>Catégorie</div><select value={catId} onChange={e=>setCatId(e.target.value)}><option value="">—</option>{catsGang.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
+      <button onClick={submit} style={{fontWeight:700,color:C.green}}>+ Ajouter</button>
+    </div>
+  );
+}
+
+function AddItemForm({onAdd}){
+  const [nom,setNom]=useState("");
+  const [prix,setPrix]=useState("");
+  const [poids,setPoids]=useState("");
+  async function submit(){
+    if(!nom||!prix)return;
+    await onAdd(nom,prix,poids);
+    setNom(""); setPrix(""); setPoids("");
+  }
+  return (
+    <div style={{display:"flex",gap:6,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4,flexWrap:"wrap"}}>
+      <input style={{flex:"1 1 100%",minWidth:0}} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+      <input type="number" style={{flex:"1 1 80px",minWidth:0}} placeholder="Prix" value={prix} onChange={e=>setPrix(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+      <input type="number" step="0.01" min="0" style={{flex:"1 1 80px",minWidth:0}} placeholder="Poids" value={poids} onChange={e=>setPoids(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+      <button onClick={submit} style={{fontWeight:700,color:C.green}}>+ Ajouter</button>
+    </div>
+  );
+}
+
 function Main({cu,setCu,onLogout}){
   const isAdmin=cu.role==="admin";
   const [tab,setTab]=useState("dashboard");
@@ -998,15 +1055,13 @@ function Main({cu,setCu,onLogout}){
         if(ch.length>0) log("items","pm_update",`a modifié la PM <b>${p.nom}</b> · ${ch.join(" · ")}`);
       }
     }
-    async function add(){
-      if(!nPM.nom||!nPM.categorie_id)return;
-      const{data}=await sb.from("pms").insert({nom:nPM.nom,categorie_id:nPM.categorie_id}).select().single();
+    async function add(nom,catId){
+      const{data}=await sb.from("pms").insert({nom,categorie_id:catId}).select().single();
       if(data){
         setPMs(p=>[...p,data]);
         const cat=catsPM.find(c=>c.id===data.categorie_id)?.nom||"?";
         log("items","pm_create",`a créé la PM <b>${data.nom}</b> (catégorie : ${cat})`);
       }
-      setNPM({nom:"",categorie_id:""});
     }
     async function del(id){
       const p=pms.find(x=>x.id===id);
@@ -1027,13 +1082,8 @@ function Main({cu,setCu,onLogout}){
           }
         </div>
       ))}
-      {/* Ajout autorisé pour TOUS (admin et membre) */}
-      <div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
-        <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nPM.nom} onChange={e=>setNPM(f=>({...f,nom:e.target.value}))}/></div>
-        <div><div style={S.lbl}>Catégorie</div><select value={nPM.categorie_id||""} onChange={e=>setNPM(f=>({...f,categorie_id:e.target.value}))}><option value="">—</option>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
-        <button onClick={add} style={{fontWeight:700,color:C.green}}>+ Ajouter</button>
-      </div>
-      {!isAdmin&&<div style={{fontSize:10,color:C.muted,marginTop:6,fontStyle:"italic"}}>💡 Tu peux ajouter de nouvelles PM. La modification et la suppression sont réservées aux admins.</div>}
+      {/* Ajout autorisé pour TOUS (admin et membre) — composant stable hors de Main */}
+      <AddPMForm catsPM={catsPM} onAdd={add} isAdmin={isAdmin}/>
     </>;
   }
 
@@ -1053,15 +1103,13 @@ function Main({cu,setCu,onLogout}){
         if(ch.length>0) log("items","gang_update",`a modifié le gang <b>${p.nom}</b> · ${ch.join(" · ")}`);
       }
     }
-    async function add(){
-      if(!nGa.nom||!nGa.categorie_id)return;
-      const{data}=await sb.from("gangs").insert({nom:nGa.nom,categorie_id:nGa.categorie_id}).select().single();
+    async function add(nom,catId){
+      const{data}=await sb.from("gangs").insert({nom,categorie_id:catId}).select().single();
       if(data){
         setGangs(p=>[...p,data]);
         const cat=catsGang.find(c=>c.id===data.categorie_id)?.nom||"?";
         log("items","gang_create",`a créé le gang <b>${data.nom}</b> (catégorie : ${cat})`);
       }
-      setNGa({nom:"",categorie_id:""});
     }
     async function del(id){
       const p=gangs.find(x=>x.id===id);
@@ -1078,11 +1126,7 @@ function Main({cu,setCu,onLogout}){
           }
         </div>
       ))}
-      {isAdmin&&<div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
-        <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nGa.nom} onChange={e=>setNGa(f=>({...f,nom:e.target.value}))}/></div>
-        <div><div style={S.lbl}>Catégorie</div><select value={nGa.categorie_id||""} onChange={e=>setNGa(f=>({...f,categorie_id:e.target.value}))}><option value="">—</option>{catsGang.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
-        <button onClick={add} style={{fontWeight:700}}>+</button>
-      </div>}
+      {isAdmin&&<AddGangForm catsGang={catsGang} onAdd={add}/>}
     </>;
   }
 
@@ -1102,15 +1146,13 @@ function Main({cu,setCu,onLogout}){
         if(ch.length>0) log("items","update",`a modifié l'item ${isPM?"PM":"gang"} <b>${it.nom}</b> · ${ch.join(" · ")}`);
       }
     }
-    async function add(){
-      if(!ni.nom||!ni.prix)return;
-      const payload={nom:ni.nom,prix:+ni.prix,poids:+ni.poids||0,visible:true};
+    async function add(nom,prix,poids){
+      const payload={nom,prix:+prix,poids:+poids||0,visible:true};
       const{data}=await sb.from(table).insert(payload).select().single();
       if(data){
         setItems(p=>[...p,data]);
         log("items","create",`a créé l'item ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${fmt(data.prix)}${data.poids>0?" · "+fmtKgD(data.poids):""}`);
       }
-      setNi({nom:"",prix:"",poids:""});
     }
     async function del(id){
       const it=items.find(x=>x.id===id);
@@ -1186,12 +1228,7 @@ function Main({cu,setCu,onLogout}){
         </div>
       )}
 
-      {canEdit&&<div style={{display:"flex",gap:6,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4,flexWrap:"wrap"}}>
-        <input style={{flex:"1 1 100%",minWidth:0}} placeholder="Nom" value={ni.nom} onChange={e=>setNi(f=>({...f,nom:e.target.value}))}/>
-        <input type="number" style={{flex:"1 1 80px",minWidth:0}} placeholder="Prix" value={ni.prix} onChange={e=>setNi(f=>({...f,prix:e.target.value}))}/>
-        <input type="number" step="0.01" min="0" style={{flex:"1 1 80px",minWidth:0}} placeholder="Poids" value={ni.poids} onChange={e=>setNi(f=>({...f,poids:e.target.value}))}/>
-        <button onClick={add} style={{fontWeight:700,color:C.green}}>+ Ajouter</button>
-      </div>}
+      {canEdit&&<AddItemForm onAdd={add}/>}
     </>;
   }
 
