@@ -508,6 +508,25 @@ function AddItemForm({onAdd}){
   );
 }
 
+function AddCatForm({onAdd}){
+  const [nom,setNom]=useState("");
+  const [pct,setPct]=useState("");
+  const [taux,setTaux]=useState("");
+  async function submit(){
+    if(!nom)return;
+    await onAdd(nom,pct,taux);
+    setNom(""); setPct(""); setTaux("");
+  }
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"1fr 80px 90px auto",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+      <input style={S.inp} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+      <input type="number" style={S.inp} placeholder="%" value={pct} onChange={e=>setPct(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+      <input type="number" style={S.inp} placeholder="$/liasse" value={taux} onChange={e=>setTaux(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+      <button onClick={submit} style={{fontWeight:700,color:C.green}}>+</button>
+    </div>
+  );
+}
+
 function Main({cu,setCu,onLogout}){
   const isAdmin=cu.role==="admin";
   const [tab,setTab]=useState("dashboard");
@@ -1050,14 +1069,12 @@ function Main({cu,setCu,onLogout}){
         if(ch.length>0) log("settings","cat_update",`a modifié la catégorie ${isPM?"PM":"gang"} <b>${c.nom}</b> · ${ch.join(" · ")}`);
       }
     }
-    async function add(){
-      if(!nc.nom)return;
-      const{data}=await sb.from(table).insert({nom:nc.nom,pct_objets:+nc.pct_objets,taux_liasse:+nc.taux_liasse}).select().single();
+    async function add(nom,pct,taux){
+      const{data}=await sb.from(table).insert({nom,pct_objets:+pct||0,taux_liasse:+taux||0}).select().single();
       if(data){
         setCats(p=>[...p,data]);
         log("settings","cat_create",`a créé la catégorie ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${data.pct_objets}% · ${fmt(data.taux_liasse)}/liasse`);
       }
-      setNc({nom:"",pct_objets:"",taux_liasse:""});
     }
     async function del(id){
       const c=cats.find(x=>x.id===id);
@@ -1075,12 +1092,7 @@ function Main({cu,setCu,onLogout}){
           }
         </div>
       ))}
-      {isAdmin&&<div style={{display:"grid",gridTemplateColumns:"1fr 80px 90px auto",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
-        <input style={S.inp} placeholder="Nom" value={nc.nom} onChange={e=>setNc(f=>({...f,nom:e.target.value}))}/>
-        <input type="number" style={S.inp} placeholder="%" value={nc.pct_objets} onChange={e=>setNc(f=>({...f,pct_objets:e.target.value}))}/>
-        <input type="number" style={S.inp} placeholder="$/liasse" value={nc.taux_liasse} onChange={e=>setNc(f=>({...f,taux_liasse:e.target.value}))}/>
-        <button onClick={add} style={{fontWeight:700}}>+</button>
-      </div>}
+      {isAdmin&&<AddCatForm onAdd={add}/>}
     </>;
   }
 
