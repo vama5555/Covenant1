@@ -70,7 +70,9 @@ const G=`*{box-sizing:border-box;}select,input{background:#3a3a3a!important;bord
   /* Apparts vue grille : 1 colonne */
   [data-mobile="apparts-grid"]{grid-template-columns:1fr!important;}
   /* Bigbrother filtres : 2x2 puis wrap */
-  [data-mobile="bb-filters"]{grid-template-columns:1fr 1fr!important;}
+  [data-mobile="bb-filters"]{grid-template-columns:1fr 1fr!important;gap:6px!important;}
+  [data-mobile="bb-filters"]>div>div{font-size:9px!important;margin-bottom:2px!important;}
+  [data-mobile="bb-filters"] input,[data-mobile="bb-filters"] select{padding:5px 8px!important;font-size:12px!important;min-height:0!important;}
   /* Bigbrother header */
   [data-mobile="bb-header"]{flex-direction:column!important;align-items:flex-start!important;gap:6px!important;}
   /* Form de transaction : 4 cols → 2 cols */
@@ -79,8 +81,8 @@ const G=`*{box-sizing:border-box;}select,input{background:#3a3a3a!important;bord
   input,select{font-size:14px!important;}
 }
 @media (max-width:420px){
-  /* Très petits écrans : tout en 1 colonne */
-  [data-mobile="grid-4"],[data-mobile="grid-3"],[data-mobile="grid-2"],[data-mobile="bb-filters"],[data-mobile="tx-form-top"]{grid-template-columns:1fr!important;}
+  /* Très petits écrans : tout en 1 colonne, sauf bb-filters qui reste en 2x2 */
+  [data-mobile="grid-4"],[data-mobile="grid-3"],[data-mobile="grid-2"],[data-mobile="tx-form-top"]{grid-template-columns:1fr!important;}
   [data-mobile="stats-grid"]{grid-template-columns:1fr!important;}
   [data-mobile="members-grid"]{grid-template-columns:1fr!important;}
 }`;
@@ -353,16 +355,16 @@ function Main({cu,setCu,onLogout}){
   const [history,setHistory]=useState([]);
   const [users,setUsers]=useState([]);
   const [blanch,setBlanch]=useState(null);
+  const [blanchHistory,setBlanchHistory]=useState([]);
   const [alertThreshold,setAlertThreshold]=useState(10000);
   const [auditLogs,setAuditLogs]=useState([]);
 
   const loadAll=useCallback(async()=>{
     setLoading(true);
-    // Purge des logs > 30 jours (lancé en parallèle, on ne bloque pas)
     const cutoff=new Date(Date.now()-30*24*3600*1000).toISOString();
     sb.from("audit_log").delete().lt("created_at",cutoff).then(()=>{});
 
-    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st,al]=await Promise.all([
+    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st,al,bh]=await Promise.all([
       sb.from("apparts").select("*").order("nom"),
       sb.from("categories_pm").select("*").order("pct_objets"),
       sb.from("categories_gang").select("*").order("pct_objets"),
@@ -376,6 +378,7 @@ function Main({cu,setCu,onLogout}){
       sb.from("blanchiment").select("*").order("depot_at",{ascending:false}).limit(1),
       sb.from("app_settings").select("*").eq("key","alert_threshold").maybeSingle(),
       sb.from("audit_log").select("*").order("created_at",{ascending:false}).limit(500),
+      sb.from("blanchiment_history").select("*").order("recup_at",{ascending:false}).limit(500),
     ]);
     setApparts(a.data||[]);
     setCatsPM(cpm.data||[]);
@@ -390,6 +393,7 @@ function Main({cu,setCu,onLogout}){
     setBlanch((bl.data&&bl.data[0])||null);
     if(st.data&&st.data.value)setAlertThreshold(+st.data.value||10000);
     setAuditLogs(al.data||[]);
+    setBlanchHistory(bh.data||[]);
     setLoading(false);
   },[]);
 
@@ -430,12 +434,28 @@ function Main({cu,setCu,onLogout}){
   async function collectBlanch(canceled){
     if(!blanch)return;
     const wasReady = (new Date(blanch.recup_at)).getTime() <= Date.now();
+    // Si récupération (pas annulation) → on archive dans blanchiment_history
+    if(!canceled){
+      const dur = blDuration(blanch.montant);
+      await sb.from("blanchiment_history").insert({
+        montant: blanch.montant,
+        depot_at: blanch.depot_at,
+        recup_at: new Date().toISOString(),
+        duree_h: dur,
+        user_nom: cu.nom
+      });
+    }
     await sb.from("blanchiment").delete().eq("id",blanch.id);
     log("laundry", canceled?"cancel":(wasReady?"collect":"collect"),
       canceled
         ? `a annulé un blanchiment de <b>${fmt(blanch.montant)}</b>`
         : `a récupéré un blanchiment de <b>${fmt(blanch.montant)}</b>`);
     setBlanch(null);
+    // Recharger l'historique blanchiment pour mettre à jour les stats
+    if(!canceled){
+      const {data}=await sb.from("blanchiment_history").select("*").order("recup_at",{ascending:false}).limit(500);
+      setBlanchHistory(data||[]);
+    }
   }
 
   const E0={dest:"pm",pmId:"",gangId:"",membreId:"",qtes:{},liasseQte:"",argentSale:"",date:today(),note:""};
@@ -641,7 +661,17 @@ function Main({cu,setCu,onLogout}){
     const file=e.target.files?.[0]; e.target.value="";
     if(!file)return;
     const buf=await file.arrayBuffer();
-    const text=new TextDecoder("utf-8").decode(buf);
+    // Décodage robuste : on essaie UTF-8 d'abord. Si on détecte des caractères cassés ( ),
+    // on retombe sur Windows-1252 (encodage par défaut d'Excel sur Windows/Mac en France).
+    let text=new TextDecoder("utf-8",{fatal:false}).decode(buf);
+    if(text.includes("\uFFFD")){
+      try {
+        const fallback=new TextDecoder("windows-1252").decode(buf);
+        text=fallback;
+      } catch(_){
+        try { text=new TextDecoder("iso-8859-1").decode(buf); } catch(_){}
+      }
+    }
     const {rows,sep}=parseCSV(text);
     if(!rows.length){setImportErr({target,msg:"Le fichier est vide."});return;}
 
@@ -742,7 +772,7 @@ function Main({cu,setCu,onLogout}){
     log("items",newVal?"unhide":"hide",`a ${newVal?"affiché":"masqué"} l'item <b>${item.nom}</b> ${newVal?"👁":"🚫"}`);
   }
 
-  const TABS_BASE=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
+  const TABS_BASE=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"stats",label:"📊 Stats"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
   const TABS=isAdmin?[...TABS_BASE,{id:"bigbrother",label:"👁 Bigbrother",admin:true}]:TABS_BASE;
   const ns=id=>{
     const isBB=id==="bigbrother";
@@ -1194,15 +1224,6 @@ function Main({cu,setCu,onLogout}){
               <div key={c.l} style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>{c.l}</div><div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2}}>{c.v}</div>{c.s&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{c.s}</div>}</div>
             ))}
           </div>
-          <div data-mobile="period" style={{display:"flex",alignItems:"center",gap:12,margin:"18px 0 14px",flexWrap:"wrap"}}>
-            <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",whiteSpace:"nowrap"}}>Sur la période</span>
-            <div style={{flex:1,height:"1px",background:C.border}}/>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}><span style={{fontSize:12,color:C.muted}}>Du</span><input type="date" value={dFrom} onChange={e=>setDFrom(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/><span style={{fontSize:12,color:C.muted}}>au</span><input type="date" value={dTo} onChange={e=>setDTo(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/></div>
-          </div>
-          <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-            <div style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Payé aux PM</div><div style={{fontSize:24,fontWeight:700,color:C.red,wordBreak:"break-word"}}>{fmt(totPaye)}</div><div style={{fontSize:11,color:C.muted,marginTop:3}}>{dashH.length} transaction{dashH.length!==1?"s":""}</div></div>
-            <div style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>Répartition</div>{rep.map(r=><div key={r.label} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}><span style={{color:C.muted}}>{r.label}</span><span style={{fontWeight:600,color:r.val>0?C.text:C.muted}}>{r.val>0?fmt(Math.round(r.val))+" · "+r.p+"%":"—"}</span></div><Bar val={r.val} max={Math.max(1,...rep.map(x=>x.val))} color={r.color}/></div>)}</div>
-          </div>
 
           <div style={{...card,marginBottom:16,borderLeft:"3px solid "+C.amber}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -1435,6 +1456,11 @@ function Main({cu,setCu,onLogout}){
         </div>
       )}
 
+      {/* ═══ STATS ═══ */}
+      {tab==="stats"&&(
+        <StatsView history={history} blanchHistory={blanchHistory}/>
+      )}
+
       {tab==="database"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={card}><div style={S.sec}>Catégories PM</div><CatTable cats={catsPM} setCats={setCatsPM} table="categories_pm" eId={eCPM} setEId={setECPM} nc={nCPM} setNc={setNCPM}/></div>
@@ -1602,6 +1628,189 @@ function Main({cu,setCu,onLogout}){
       {tab==="bigbrother"&&isAdmin&&(
         <BigbrotherView logs={auditLogs} users={users} bbFilter={bbFilter} setBBFilter={setBBFilter}/>
       )}
+    </div>
+  );
+}
+
+// ── Composant onglet Stats ──────────────────────────────────────────
+function StatsView({history,blanchHistory}){
+  const [period,setPeriod]=useState("7"); // "today" | "7" | "30" | "total"
+
+  // Calcul de la date de début selon la période
+  const fromDate=useMemo(()=>{
+    if(period==="total")return null;
+    const d=new Date();
+    if(period==="today"){
+      d.setHours(0,0,0,0);
+    } else {
+      d.setDate(d.getDate()-parseInt(period,10));
+    }
+    return d;
+  },[period]);
+
+  // Filtrer transactions sur la période
+  const txInPeriod=useMemo(()=>{
+    if(!fromDate)return history;
+    const fromStr=fromDate.toISOString().slice(0,10);
+    return history.filter(h=>h.date>=fromStr);
+  },[history,fromDate]);
+
+  // Calcul total payé aux PM (uniquement dest=pm)
+  const totPaye=useMemo(()=>{
+    return txInPeriod.filter(h=>h.dest==="pm").reduce((s,h)=>s+(+h.total||0),0);
+  },[txInPeriod]);
+  const txCount=txInPeriod.filter(h=>h.dest==="pm").length;
+  const avgTx=txCount>0?Math.round(totPaye/txCount):0;
+
+  // Total blanchi sur la période
+  const blanchInPeriod=useMemo(()=>{
+    if(!fromDate)return blanchHistory;
+    return blanchHistory.filter(b=>new Date(b.recup_at).getTime()>=fromDate.getTime());
+  },[blanchHistory,fromDate]);
+  const totBlanch=blanchInPeriod.reduce((s,b)=>s+(+b.montant||0),0);
+  const cycleCount=blanchInPeriod.length;
+  const avgDur=cycleCount>0?Math.round(blanchInPeriod.reduce((s,b)=>s+(+b.duree_h||0),0)/cycleCount):0;
+
+  // Répartition objets / liasses / argent sale
+  const rep=useMemo(()=>{
+    let o=0,l=0,a=0;
+    txInPeriod.forEach(h=>{
+      if(h.types?.includes("objets")&&h.lignes)o+=h.lignes.reduce((s,x)=>s+(x.sous_total||0),0);
+      if(h.types?.includes("liasses"))l+=(h.taux_liasse||0)*(h.liasse_qte||0);
+      if(h.types?.includes("argent"))a+=Math.round((h.argent_sale||0)*0.4);
+    });
+    return {objets:Math.round(o),liasses:Math.round(l),argent:Math.round(a)};
+  },[txInPeriod]);
+  const repTotal=rep.objets+rep.liasses+rep.argent||1;
+  const repItems=[
+    {label:"Objets",val:rep.objets,color:C.blue},
+    {label:"Liasses",val:rep.liasses,color:C.green},
+    {label:"Argent sale",val:rep.argent,color:C.amber},
+  ];
+
+  // Top 5 PM
+  const topPM=useMemo(()=>{
+    const map=new Map();
+    txInPeriod.filter(h=>h.dest==="pm").forEach(h=>{
+      const key=h.pm_nom||"?";
+      if(!map.has(key))map.set(key,{nom:key,cat:h.pm_cat||"",total:0,count:0});
+      const x=map.get(key);
+      x.total+=(+h.total||0);
+      x.count+=1;
+    });
+    return [...map.values()].sort((a,b)=>b.total-a.total).slice(0,5);
+  },[txInPeriod]);
+
+  // Top 5 Gangs
+  const topGang=useMemo(()=>{
+    const map=new Map();
+    txInPeriod.filter(h=>h.dest==="gang").forEach(h=>{
+      const key=h.gang_nom||"?";
+      if(!map.has(key))map.set(key,{nom:key,cat:h.gang_cat||"",total:0,count:0});
+      const x=map.get(key);
+      x.total+=(+h.total||0);
+      x.count+=1;
+    });
+    return [...map.values()].sort((a,b)=>b.total-a.total).slice(0,5);
+  },[txInPeriod]);
+
+  // Couleurs des rangs (or, argent, bronze, gris...)
+  const rankBgs=["rgba(212,146,10,0.18)","rgba(160,160,160,0.18)","rgba(212,132,10,0.12)","rgba(120,120,120,0.15)","rgba(120,120,120,0.15)"];
+  const rankColors=[C.text,C.muted,"#888","#666","#555"];
+
+  function renderTopRow(arr,emptyLabel){
+    if(arr.length===0){
+      return <div style={{color:C.muted,fontSize:11,fontStyle:"italic",textAlign:"center",padding:14}}>{emptyLabel}</div>;
+    }
+    return arr.map((r,i)=>(
+      <div key={r.nom+i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<arr.length-1?"1px solid #404040":"none"}}>
+        <div style={{width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,flexShrink:0,background:rankBgs[i],color:rankColors[i]}}>{i+1}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.nom}</div>
+          <div style={{fontSize:10,color:C.muted}}>{r.cat||"—"} · {r.count} tx</div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontSize:13,fontWeight:600,color:C.red}}>{fmt(r.total)}</div>
+        </div>
+      </div>
+    ));
+  }
+
+  const periodBtn=p=>({padding:"6px 14px",fontSize:12,color:period===p?C.text:C.muted,background:period===p?C.surfaceAlt:"none",border:"1px solid "+(period===p?C.border:"transparent"),borderRadius:6,cursor:"pointer",fontWeight:period===p?500:400,whiteSpace:"nowrap"});
+
+  return (
+    <div>
+      <div data-mobile="bb-header" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
+        <h3 style={{fontSize:16,fontWeight:600,margin:0,color:C.text}}>📊 Stats</h3>
+        <div style={{display:"flex",gap:4,background:"#252525",padding:3,borderRadius:8,border:"1px solid "+C.border,flexWrap:"wrap"}}>
+          <button onClick={()=>setPeriod("today")} style={periodBtn("today")}>Aujourd'hui</button>
+          <button onClick={()=>setPeriod("7")} style={periodBtn("7")}>7 jours</button>
+          <button onClick={()=>setPeriod("30")} style={periodBtn("30")}>30 jours</button>
+          <button onClick={()=>setPeriod("total")} style={periodBtn("total")}>Total</button>
+        </div>
+      </div>
+
+      {/* ── Section 1 : Argent ── */}
+      <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em",margin:"18px 0 10px",display:"flex",alignItems:"center",gap:10}}>
+        <span>💰 Argent</span>
+        <div style={{flex:1,height:1,background:C.border}}/>
+      </div>
+
+      <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div style={card}>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Payé aux PM</div>
+          <div style={{fontSize:24,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totPaye)}</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:4}}>
+            {txCount} transaction{txCount!==1?"s":""}
+            {txCount>0&&" · moy. "+fmt(avgTx)}
+          </div>
+        </div>
+        <div style={card}>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Total blanchi</div>
+          <div style={{fontSize:24,fontWeight:600,color:C.amber,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBlanch)}</div>
+          <div style={{fontSize:11,color:C.muted,marginTop:4}}>
+            {cycleCount} cycle{cycleCount!==1?"s":""}
+            {cycleCount>0&&" · durée moy. "+avgDur+"h"}
+          </div>
+        </div>
+      </div>
+
+      <div style={{...card,marginBottom:12}}>
+        <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:12}}>Répartition des paiements aux PM</div>
+        {repItems.map(r=>{
+          const p=Math.round(r.val/repTotal*100);
+          return (
+            <div key={r.label} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                <span style={{color:C.muted}}>{r.label}</span>
+                <span style={{fontWeight:600,color:r.val>0?C.text:C.muted}}>
+                  {r.val>0?fmt(r.val)+" · "+p+"%":"—"}
+                </span>
+              </div>
+              <div style={{background:C.surfaceAlt,borderRadius:6,height:6,border:"1px solid "+C.border,overflow:"hidden"}}>
+                <div style={{width:p+"%",height:"100%",borderRadius:6,background:r.color,transition:"width .4s"}}/>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Section 2 : Top ── */}
+      <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em",margin:"18px 0 10px",display:"flex",alignItems:"center",gap:10}}>
+        <span>🏆 Meilleurs PM &amp; Gangs</span>
+        <div style={{flex:1,height:1,background:C.border}}/>
+      </div>
+
+      <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div style={card}>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Top 5 PM</div>
+          {renderTopRow(topPM,"Aucune PM payée sur la période")}
+        </div>
+        <div style={card}>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Top 5 Gangs</div>
+          {renderTopRow(topGang,"Aucun gang payé sur la période")}
+        </div>
+      </div>
     </div>
   );
 }
