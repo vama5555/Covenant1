@@ -399,6 +399,65 @@ function Main({cu,setCu,onLogout}){
 
   useEffect(()=>{loadAll();},[loadAll]);
 
+  // ── REALTIME : écoute des changements et rechargement ciblé silencieux ──
+  useEffect(()=>{
+    // Mapping table -> fonction de recharge ciblée
+    const reloaders = {
+      apparts:           ()=>sb.from("apparts").select("*").order("nom").then(({data})=>setApparts(data||[])),
+      membres_comptes:   ()=>sb.from("membres_comptes").select("*").order("nom").then(({data})=>setMembers(data||[])),
+      transactions:      ()=>sb.from("transactions").select("*").order("created_at",{ascending:false}).then(({data})=>setHistory(data||[])),
+      items_pm:          ()=>sb.from("items_pm").select("*").order("nom").then(({data})=>setItemsPM(data||[])),
+      items_gang:        ()=>sb.from("items_gang").select("*").order("nom").then(({data})=>setItemsG(data||[])),
+      pms:               ()=>sb.from("pms").select("*").order("nom").then(({data})=>setPMs(data||[])),
+      gangs:             ()=>sb.from("gangs").select("*").order("nom").then(({data})=>setGangs(data||[])),
+      categories_pm:     ()=>sb.from("categories_pm").select("*").order("pct_objets").then(({data})=>setCatsPM(data||[])),
+      categories_gang:   ()=>sb.from("categories_gang").select("*").order("pct_objets").then(({data})=>setCatsGang(data||[])),
+      users:             ()=>sb.from("users").select("*").order("nom").then(({data})=>setUsers(data||[])),
+      blanchiment:       ()=>sb.from("blanchiment").select("*").order("depot_at",{ascending:false}).limit(1).then(({data})=>setBlanch((data&&data[0])||null)),
+      blanchiment_history:()=>sb.from("blanchiment_history").select("*").order("recup_at",{ascending:false}).limit(500).then(({data})=>setBlanchHistory(data||[])),
+      audit_log:         ()=>sb.from("audit_log").select("*").order("created_at",{ascending:false}).limit(500).then(({data})=>setAuditLogs(data||[])),
+      app_settings:      async ()=>{
+                            const {data}=await sb.from("app_settings").select("*").eq("key","alert_threshold").maybeSingle();
+                            if(data&&data.value)setAlertThreshold(+data.value||10000);
+                          },
+    };
+
+    // Petit debounce par table pour éviter de recharger 5 fois si plusieurs events arrivent en rafale
+    const timers = {};
+    const triggerReload = (table) => {
+      if(!reloaders[table])return;
+      if(timers[table]) clearTimeout(timers[table]);
+      timers[table] = setTimeout(()=>{
+        reloaders[table]();
+        timers[table] = null;
+      }, 250);
+    };
+
+    // Une seule souscription qui écoute toutes les tables
+    const channel = sb.channel("covenant-realtime")
+      .on("postgres_changes", {event:"*", schema:"public", table:"apparts"},            p=>triggerReload("apparts"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"membres_comptes"},    p=>triggerReload("membres_comptes"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"transactions"},       p=>triggerReload("transactions"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"items_pm"},           p=>triggerReload("items_pm"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"items_gang"},         p=>triggerReload("items_gang"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"pms"},                p=>triggerReload("pms"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"gangs"},              p=>triggerReload("gangs"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"categories_pm"},      p=>triggerReload("categories_pm"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"categories_gang"},    p=>triggerReload("categories_gang"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"users"},              p=>triggerReload("users"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"blanchiment"},        p=>triggerReload("blanchiment"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"blanchiment_history"},p=>triggerReload("blanchiment_history"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"audit_log"},          p=>triggerReload("audit_log"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"app_settings"},       p=>triggerReload("app_settings"))
+      .subscribe();
+
+    return () => {
+      // Nettoyage : annuler timers + désabonner à la déconnexion
+      Object.values(timers).forEach(t=>t&&clearTimeout(t));
+      sb.removeChannel(channel);
+    };
+  },[]);
+
   // Helper local : log + ajout direct dans le state pour affichage immédiat
   const log = useCallback(async (category, action, message, details=null) => {
     const entry={user_nom:cu.nom, category, action, message, details:details||null, created_at:new Date().toISOString()};
