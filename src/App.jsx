@@ -33,7 +33,7 @@ const fmtRem = ms => {
 const C={bg:"#2a2a2a",surface:"#333",surfaceAlt:"#3d3d3d",border:"#505050",text:"#f0f0f0",muted:"#a0a0a0",green:"#3dbf8f",red:"#e05555",amber:"#d4920a",blue:"#5aaee8"};
 const card={background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"16px 18px",boxShadow:"0 2px 10px rgba(0,0,0,0.25)"};
 const S={card,inp:{width:"100%"},lbl:{fontSize:11,color:C.muted,marginBottom:3,fontWeight:500},sec:{fontSize:10,fontWeight:700,color:C.muted,margin:"0 0 14px",textTransform:"uppercase",letterSpacing:"0.12em"},row:{display:"flex",alignItems:"center",gap:8,marginBottom:8}};
-const G=`*{box-sizing:border-box;}select,input{background:#3a3a3a!important;border:1px solid #585858!important;border-radius:8px!important;padding:7px 11px!important;font-size:13px!important;color:#f0f0f0!important;outline:none!important;box-shadow:inset 0 1px 4px rgba(0,0,0,0.25)!important;font-family:inherit;transition:border-color .15s;}select{-webkit-appearance:auto!important;appearance:auto!important;cursor:pointer;}select:focus,input:focus{border-color:#888!important;}select option{background:#3a3a3a!important;color:#f0f0f0!important;}input::placeholder{color:#686868!important;}button{background:#3a3a3a;border:1px solid #585858;border-radius:8px;padding:5px 12px;font-size:13px;color:#f0f0f0;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.25);transition:background .12s,transform .08s;white-space:nowrap;flex-shrink:0;}button:hover{background:#484848;}button:active{transform:scale(0.97);}div,span,p,h1,h2,h3,label{color:inherit;}
+const G=`*{box-sizing:border-box;}@keyframes cv-spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}@keyframes cv-pulse{0%,100%{opacity:0.4;}50%{opacity:1;}}select,input{background:#3a3a3a!important;border:1px solid #585858!important;border-radius:8px!important;padding:7px 11px!important;font-size:13px!important;color:#f0f0f0!important;outline:none!important;box-shadow:inset 0 1px 4px rgba(0,0,0,0.25)!important;font-family:inherit;transition:border-color .15s;}select{-webkit-appearance:auto!important;appearance:auto!important;cursor:pointer;}select:focus,input:focus{border-color:#888!important;}select option{background:#3a3a3a!important;color:#f0f0f0!important;}input::placeholder{color:#686868!important;}button{background:#3a3a3a;border:1px solid #585858;border-radius:8px;padding:5px 12px;font-size:13px;color:#f0f0f0;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.25);transition:background .12s,transform .08s;white-space:nowrap;flex-shrink:0;}button:hover{background:#484848;}button:active{transform:scale(0.97);}div,span,p,h1,h2,h3,label{color:inherit;}
 /* ── Responsive mobile (≤ 700px) ── */
 @media (max-width:700px){
   /* Padding réduit du conteneur principal */
@@ -107,7 +107,21 @@ const diff = (a,b) => `<b>${a}</b> → <b>${b}</b>`; // Nombre d'items affichés
 
 function Bar({val,max,color}){const p=pv(val,max),c=color||(p>85?C.red:p>60?C.amber:C.green);return <div style={{background:C.surfaceAlt,borderRadius:6,height:6,overflow:"hidden",border:"1px solid "+C.border}}><div style={{width:p+"%",background:c,height:"100%",borderRadius:6,transition:"width .4s"}}/></div>;}
 function RoleBadge({role}){const a=role==="admin";return <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:600,background:a?"rgba(224,85,85,0.15)":"rgba(74,158,222,0.15)",color:a?C.red:C.blue,border:"1px solid "+(a?"rgba(224,85,85,0.3)":"rgba(74,158,222,0.3)")}}>{a?"Admin":"Membre"}</span>;}
-function Loader(){return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"60vh",color:C.muted,fontSize:14}}>Chargement...</div>;}
+function Loader(){
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"60vh",gap:14}}>
+      <style>{`@keyframes cv-spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}@keyframes cv-pulse{0%,100%{opacity:0.4;}50%{opacity:1;}}`}</style>
+      <div style={{
+        width:32,height:32,
+        border:"3px solid "+C.surfaceAlt,
+        borderTop:"3px solid "+C.text,
+        borderRadius:"50%",
+        animation:"cv-spin 0.8s linear infinite"
+      }}/>
+      <div style={{color:C.muted,fontSize:13,animation:"cv-pulse 1.4s ease-in-out infinite",fontWeight:500,letterSpacing:"0.04em"}}>Chargement...</div>
+    </div>
+  );
+}
 
 function Login({onLogin}){
   const [users,setUsers]=useState([]);
@@ -149,7 +163,9 @@ function Login({onLogin}){
       <div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Code d'accès</div>
       <input type="password" placeholder="• • • • • •" value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} style={{width:"100%",marginBottom:err?8:14,fontSize:20,letterSpacing:"0.35em",textAlign:"center"}}/>
       {err&&<div style={{fontSize:12,color:C.red,marginBottom:12,fontWeight:500,textAlign:"center"}}>{err}</div>}
-      <button onClick={go} disabled={loading||usersLoading} style={{width:"100%",padding:"11px",fontWeight:700,fontSize:14,background:"#585858",color:C.text,border:"1px solid #686868",borderRadius:8}}>{loading?"...":"Connexion"}</button>
+      <button onClick={go} disabled={loading||usersLoading} style={{width:"100%",padding:"11px",fontWeight:700,fontSize:14,background:"#585858",color:C.text,border:"1px solid #686868",borderRadius:8,opacity:loading?0.7:1,cursor:loading?"wait":"pointer"}}>
+        {loading?<><span style={{display:"inline-block",width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTop:"2px solid #fff",borderRadius:"50%",animation:"cv-spin 0.6s linear infinite",verticalAlign:"middle",marginRight:8}}/>Connexion...</>:"Connexion"}
+      </button>
     </div>
   </div>;
 }
@@ -719,26 +735,55 @@ function Main({cu,setCu,onLogout}){
       membre:mb?mb.nom:"",
       ...det
     };
-    await sb.from("transactions").insert(payload);
-    if(mb) await sb.from("membres_comptes").update({solde:mb.solde-txTotal}).eq("id",mb.id);
+
+    // ⚡ MODE OPTIMISTIC : on met à jour l'UI immédiatement, on envoie en arrière-plan
+    const tempId = "temp-"+Date.now();
+    const optimisticTx = {...payload, id: tempId, created_at: new Date().toISOString()};
+    setHistory(h=>[optimisticTx, ...h]);
+    if(mb) setMembers(ms=>ms.map(x=>x.id===mb.id?{...x,solde:x.solde-txTotal}:x));
+
     const who=tx.dest==="pm"?(selPM?.nom||"?")+" · "+(selCatPM?.nom||"?"):(selGang?.nom||"?")+" · "+(selCatG?.nom||"?");
     log("tx","create",`a enregistré une transaction ${tx.dest==="pm"?"PM":"Gang"} <b>${who}</b> · <b>${fmt(txTotal)}</b>${totPoids>0?" · "+fmtKgD(totPoids):""}${mb?" (payée par "+mb.nom+")":""}`);
-    await loadAll();
     setTx(E0);
+
+    // Envoi en arrière-plan : Realtime se chargera de remplacer le temp par le vrai ID
+    sb.from("transactions").insert(payload).then(({error})=>{
+      if(error){
+        // En cas d'erreur, on retire le temp et on affiche une alerte
+        setHistory(h=>h.filter(x=>x.id!==tempId));
+        if(mb) setMembers(ms=>ms.map(x=>x.id===mb.id?{...x,solde:x.solde+txTotal}:x));
+        alert("Erreur lors de l'enregistrement : "+error.message);
+      }
+    });
+    if(mb) sb.from("membres_comptes").update({solde:mb.solde-txTotal}).eq("id",mb.id).then(()=>{});
   }
 
   async function deleteTx(id){
     const h=history.find(x=>x.id===id);
     if(!h)return;
+
+    // ⚡ MODE OPTIMISTIC : on retire de l'UI immédiatement
+    setHistory(hs=>hs.filter(x=>x.id!==id));
+    let mb=null;
     if(h.dest==="pm"&&h.membre){
-      const mb=members.find(m=>m.nom===h.membre);
-      if(mb) await sb.from("membres_comptes").update({solde:mb.solde+h.total}).eq("id",mb.id);
+      mb=members.find(m=>m.nom===h.membre);
+      if(mb) setMembers(ms=>ms.map(x=>x.id===mb.id?{...x,solde:x.solde+h.total}:x));
     }
-    await sb.from("transactions").delete().eq("id",id);
+
     const who=h.dest==="pm"?(h.pm_nom||"?"):(h.gang_nom||"?");
     log("tx","delete",`a supprimé une transaction ${h.dest==="pm"?"PM":"Gang"} <b>${who}</b> · <b>${fmt(h.total)}</b> du ${h.date}`);
-    await loadAll();
     setConfirmDel(null);
+
+    // Envoi en arrière-plan
+    if(mb) sb.from("membres_comptes").update({solde:mb.solde+h.total}).eq("id",mb.id).then(()=>{});
+    sb.from("transactions").delete().eq("id",id).then(({error})=>{
+      if(error){
+        // Rollback en cas d'erreur
+        setHistory(hs=>[h,...hs]);
+        if(mb) setMembers(ms=>ms.map(x=>x.id===mb.id?{...x,solde:x.solde-h.total}:x));
+        alert("Erreur lors de la suppression : "+error.message);
+      }
+    });
   }
 
   const [hFil,setHFil]=useState({who:""});
