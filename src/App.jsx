@@ -35,6 +35,8 @@ const card={background:C.surface,border:"1px solid "+C.border,borderRadius:12,pa
 const S={card,inp:{width:"100%"},lbl:{fontSize:11,color:C.muted,marginBottom:3,fontWeight:500},sec:{fontSize:10,fontWeight:700,color:C.muted,margin:"0 0 14px",textTransform:"uppercase",letterSpacing:"0.12em"},row:{display:"flex",alignItems:"center",gap:8,marginBottom:8}};
 const G=`*{box-sizing:border-box;}select,input{background:#3a3a3a!important;border:1px solid #585858!important;border-radius:8px!important;padding:7px 11px!important;font-size:13px!important;color:#f0f0f0!important;outline:none!important;box-shadow:inset 0 1px 4px rgba(0,0,0,0.25)!important;font-family:inherit;transition:border-color .15s;}select{-webkit-appearance:auto!important;appearance:auto!important;cursor:pointer;}select:focus,input:focus{border-color:#888!important;}select option{background:#3a3a3a!important;color:#f0f0f0!important;}input::placeholder{color:#686868!important;}button{background:#3a3a3a;border:1px solid #585858;border-radius:8px;padding:5px 12px;font-size:13px;color:#f0f0f0;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.25);transition:background .12s,transform .08s;white-space:nowrap;flex-shrink:0;}button:hover{background:#484848;}button:active{transform:scale(0.97);}div,span,p,h1,h2,h3,label{color:inherit;}`;
 
+const PREVIEW=5; // Nombre d'items affichés par défaut dans les listes pliables Database
+
 function Bar({val,max,color}){const p=pv(val,max),c=color||(p>85?C.red:p>60?C.amber:C.green);return <div style={{background:C.surfaceAlt,borderRadius:6,height:6,overflow:"hidden",border:"1px solid "+C.border}}><div style={{width:p+"%",background:c,height:"100%",borderRadius:6,transition:"width .4s"}}/></div>;}
 function RoleBadge({role}){const a=role==="admin";return <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:600,background:a?"rgba(224,85,85,0.15)":"rgba(74,158,222,0.15)",color:a?C.red:C.blue,border:"1px solid "+(a?"rgba(224,85,85,0.3)":"rgba(74,158,222,0.3)")}}>{a?"Admin":"Membre"}</span>;}
 function Loader(){return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"60vh",color:C.muted,fontSize:14}}>Chargement...</div>;}
@@ -93,7 +95,6 @@ export default function App(){
 // ── Détecte le séparateur CSV : si ';' présent dans la première ligne, c'est lui (Excel FR) ──
 function detectSep(text){
   const firstLine=text.split(/\r?\n/)[0]||"";
-  // On ignore les ';' à l'intérieur de guillemets
   let inQ=false, hasSemi=false;
   for(const c of firstLine){
     if(c==='"')inQ=!inQ;
@@ -101,7 +102,6 @@ function detectSep(text){
   }
   return hasSemi?";":",";
 }
-// ── Parse une chaîne CSV avec un séparateur donné ──
 function parseCSV(text,sep){
   const SEP=sep||detectSep(text);
   const rows=[]; let cur=[], val="", inQ=false;
@@ -120,22 +120,19 @@ function parseCSV(text,sep){
     }
   }
   if(val||cur.length){cur.push(val);rows.push(cur);}
-  // Retire un BOM UTF-8 éventuel sur la 1ère cellule
   if(rows[0]&&rows[0][0]&&rows[0][0].charCodeAt(0)===0xFEFF){
     rows[0][0]=rows[0][0].slice(1);
   }
   return {rows:rows.filter(r=>r.length&&!(r.length===1&&!r[0].trim())), sep:SEP};
 }
-// ── Parse un nombre qui peut avoir une virgule OU un point comme décimale ──
 function parseNum(s){
   if(s==null)return 0;
   const t=String(s).trim().replace(/\s/g,"").replace(",",".");
   return parseFloat(t)||0;
 }
-// ── Export CSV : toujours avec ';' comme séparateur (compatible Excel FR) et virgule décimale ──
 function toCSVItems(items){
   const esc=v=>{const s=String(v??"");return /[";\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
-  const num=v=>String(v??0).replace(".",","); // décimales avec virgule
+  const num=v=>String(v??0).replace(".",",");
   return "\uFEFFnom;prix;poids\n"+items.map(it=>esc(it.nom)+";"+num(it.prix)+";"+num(it.poids||0)).join("\n");
 }
 function toCSVPMs(pms,cats){
@@ -145,6 +142,10 @@ function toCSVPMs(pms,cats){
     return esc(p.nom)+";"+esc(c?c.nom:"");
   }).join("\n");
 }
+function toCSVUsers(users){
+  const esc=v=>{const s=String(v??"");return /[";\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  return "\uFEFFnom;code;role\n"+users.map(u=>esc(u.nom)+";"+esc(u.code)+";"+esc(u.role||"membre")).join("\n");
+}
 function downloadCSV(filename,content){
   const blob=new Blob([content],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob);
@@ -153,11 +154,10 @@ function downloadCSV(filename,content){
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// ── Section pliable d'items avec recherche ──────────────────────────────
+// ── Section pliable d'items avec recherche (Transactions) ──
 function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
   const [open,setOpen]=useState(false);
   const [q,setQ]=useState("");
-  // On filtre les items masqués (visible=false explicitement)
   const visibleItems=useMemo(()=>items.filter(it=>it.visible!==false),[items]);
   const filtered=useMemo(()=>{
     if(!q.trim())return visibleItems;
@@ -227,10 +227,11 @@ function Main({cu,setCu,onLogout}){
   const [history,setHistory]=useState([]);
   const [users,setUsers]=useState([]);
   const [blanch,setBlanch]=useState(null);
+  const [alertThreshold,setAlertThreshold]=useState(10000);
 
   const loadAll=useCallback(async()=>{
     setLoading(true);
-    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl]=await Promise.all([
+    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st]=await Promise.all([
       sb.from("apparts").select("*").order("nom"),
       sb.from("categories_pm").select("*").order("pct_objets"),
       sb.from("categories_gang").select("*").order("pct_objets"),
@@ -242,6 +243,7 @@ function Main({cu,setCu,onLogout}){
       sb.from("transactions").select("*").order("created_at",{ascending:false}),
       sb.from("users").select("*").order("nom"),
       sb.from("blanchiment").select("*").order("depot_at",{ascending:false}).limit(1),
+      sb.from("app_settings").select("*").eq("key","alert_threshold").maybeSingle(),
     ]);
     setApparts(a.data||[]);
     setCatsPM(cpm.data||[]);
@@ -254,6 +256,7 @@ function Main({cu,setCu,onLogout}){
     setHistory(h.data||[]);
     setUsers(u.data||[]);
     setBlanch((bl.data&&bl.data[0])||null);
+    if(st.data&&st.data.value)setAlertThreshold(+st.data.value||10000);
     setLoading(false);
   },[]);
 
@@ -304,7 +307,6 @@ function Main({cu,setCu,onLogout}){
     return aItems.reduce((s,it)=>s+it.prix*(+(tx.qtes[it.id])||0)*(aPct/100),0);
   },[tx.qtes,aPct,aItems]);
 
-  // Poids total = somme (poids_unitaire × quantité) — pas de pondération, c'est le poids physique réel
   const totPoids=useMemo(()=>{
     return aItems.reduce((s,it)=>s+(+(it.poids)||0)*(+(tx.qtes[it.id])||0),0);
   },[tx.qtes,aItems]);
@@ -405,6 +407,9 @@ function Main({cu,setCu,onLogout}){
   const [eApV,setEApV]=useState({});
   const [nAp,setNAp]=useState({nom:"",categorie:"recel",max_coffre:"",max_stock:"",code:""});
 
+  // États "Voir tout / Réduire" pour les listes pliables Database
+  const [showAll,setShowAll]=useState({itemsPM:false,itemsG:false,members:false});
+
   const [pwd,setPwd]=useState({cur:"",neu:"",conf:""});
   const [pwdMsg,setPwdMsg]=useState(null);
   async function changePwd(){
@@ -422,21 +427,35 @@ function Main({cu,setCu,onLogout}){
     setTimeout(()=>setPwdMsg(null),3500);
   }
 
+  // Sauvegarde du seuil d'alerte
+  const [thresholdInput,setThresholdInput]=useState("");
+  const [thresholdMsg,setThresholdMsg]=useState(null);
+  useEffect(()=>{setThresholdInput(String(alertThreshold));},[alertThreshold]);
+  async function saveThreshold(){
+    setThresholdMsg(null);
+    const v=Math.max(0,Math.round(+thresholdInput||0));
+    const {error}=await sb.from("app_settings").upsert({key:"alert_threshold",value:String(v)},{onConflict:"key"});
+    if(error){setThresholdMsg({t:"err",m:"Erreur : "+error.message});return;}
+    setAlertThreshold(v);
+    setThresholdMsg({t:"ok",m:"Seuil sauvegardé : "+fmt(v)});
+    setTimeout(()=>setThresholdMsg(null),3000);
+  }
+
   const fileRefPM=useRef(null);
   const fileRefG=useRef(null);
   const fileRefPMs=useRef(null);
+  const fileRefUsers=useRef(null);
   const [importDlg,setImportDlg]=useState(null);
   const [importErr,setImportErr]=useState(null);
 
   function triggerImport(target){
-    const r=target==="items_pm"?fileRefPM:target==="items_gang"?fileRefG:fileRefPMs;
+    const r=target==="items_pm"?fileRefPM:target==="items_gang"?fileRefG:target==="users"?fileRefUsers:fileRefPMs;
     r.current?.click();
   }
 
   async function onFileChosen(e,target){
     const file=e.target.files?.[0]; e.target.value="";
     if(!file)return;
-    // Lecture explicite en UTF-8 pour éviter les caractères cassés (é, è, etc.)
     const buf=await file.arrayBuffer();
     const text=new TextDecoder("utf-8").decode(buf);
     const {rows,sep}=parseCSV(text);
@@ -458,10 +477,26 @@ function Main({cu,setCu,onLogout}){
       });
       if(!data.length&&!skipped.length){setImportErr({target,msg:"Aucune ligne valide trouvée."});return;}
       setImportDlg({target,items:data,skipped,sep});
-    } else {
-      // items_pm / items_gang : nom,prix,poids — 3 colonnes obligatoires
+    } else if(target==="users"){
+      // Format : nom,code,role
       const first=rows[0];
-      // Détection en-tête : 1ère ligne contient "nom" ou "name" OU sa 2e cellule n'est pas un nombre
+      const hasHeader=first.length>=2 && /nom|name/i.test(first[0]);
+      const lines=hasHeader?rows.slice(1):rows;
+      const data=[];
+      const skipped=[];
+      lines.forEach(r=>{
+        const nom=(r[0]||"").trim();
+        const code=(r[1]||"").trim();
+        const role=(r[2]||"membre").trim().toLowerCase();
+        if(!nom||!code){skipped.push({nom:nom||"(sans nom)",reason:"nom ou code vide"});return;}
+        if(role!=="admin"&&role!=="membre"){skipped.push({nom,reason:"rôle invalide : "+role});return;}
+        data.push({nom,code,role});
+      });
+      if(!data.length&&!skipped.length){setImportErr({target,msg:"Aucune ligne valide trouvée."});return;}
+      setImportDlg({target,items:data,skipped,sep});
+    } else {
+      // items_pm / items_gang : nom,prix,poids — 3 colonnes
+      const first=rows[0];
       const hasHeader = first.length>=2 && (/nom|name/i.test(first[0]) || isNaN(parseNum(first[1])));
       const dataRows = hasHeader ? rows.slice(1) : rows;
 
@@ -488,13 +523,19 @@ function Main({cu,setCu,onLogout}){
   async function confirmImport(mode){
     if(!importDlg)return;
     const {target,items}=importDlg;
-    const table=target==="items_pm"?"items_pm":target==="items_gang"?"items_gang":"pms";
+    const table=target==="items_pm"?"items_pm":target==="items_gang"?"items_gang":target==="users"?"users":"pms";
     if(mode==="replace"){
-      await sb.from(table).delete().neq("id","00000000-0000-0000-0000-000000000000");
+      if(target==="users"){
+        // On ne supprime PAS l'utilisateur courant pour ne pas se déconnecter
+        await sb.from(table).delete().neq("id",cu.id);
+      } else {
+        await sb.from(table).delete().neq("id","00000000-0000-0000-0000-000000000000");
+      }
     }
     const {data}=await sb.from(table).insert(items).select();
     if(target==="items_pm")setItemsPM(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
     else if(target==="items_gang")setItemsG(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
+    else if(target==="users")setUsers(mode==="replace"?[cu,...(data||[])]:p=>[...p,...(data||[])]);
     else setPMs(mode==="replace"?(data||[]):p=>[...p,...(data||[])]);
     setImportDlg(null);
   }
@@ -503,9 +544,9 @@ function Main({cu,setCu,onLogout}){
     if(target==="items_pm"){downloadCSV("items_pm.csv",toCSVItems(itemsPM));return;}
     if(target==="items_gang"){downloadCSV("items_gang.csv",toCSVItems(itemsG));return;}
     if(target==="pms"){downloadCSV("petites_mains.csv",toCSVPMs(pms,catsPM));return;}
+    if(target==="users"){downloadCSV("acces.csv",toCSVUsers(users));return;}
   }
 
-  // ── Toggle visibilité d'un item (admin only) ──
   async function toggleItemVisibility(item,table,setItems){
     const newVal=!(item.visible!==false);
     await sb.from(table).update({visible:newVal}).eq("id",item.id);
@@ -584,8 +625,8 @@ function Main({cu,setCu,onLogout}){
     </>;
   }
 
-  // ── Liste d'items avec œil + poids ──
-  function IList({items,setItems,table,eId,setEId,ni,setNi,canEdit,target}){
+  // ── Liste d'items avec œil + poids (avec affichage partiel) ──
+  function IList({items,setItems,table,eId,setEId,ni,setNi,canEdit,target,allKey}){
     async function save(it){
       await sb.from(table).update({nom:it.nom,prix:it.prix,poids:+it.poids||0}).eq("id",it.id);
       setItems(is=>is.map(x=>x.id===it.id?it:x));
@@ -601,6 +642,8 @@ function Main({cu,setCu,onLogout}){
     async function del(id){await sb.from(table).delete().eq("id",id);setItems(is=>is.filter(x=>x.id!==id));}
 
     const visibleCount=items.filter(it=>it.visible!==false).length;
+    const isAll=showAll[allKey];
+    const displayed=isAll?items:items.slice(0,PREVIEW);
 
     return <>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -611,7 +654,6 @@ function Main({cu,setCu,onLogout}){
         </div>
       </div>
 
-      {/* En-tête colonnes */}
       <div style={{display:"flex",alignItems:"center",gap:8,padding:"0 4px 6px",fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",borderBottom:"1px solid "+C.border,marginBottom:4}}>
         <span style={{width:30}}></span>
         <span style={{flex:1}}>Nom</span>
@@ -620,7 +662,7 @@ function Main({cu,setCu,onLogout}){
         {canEdit&&<span style={{width:80}}></span>}
       </div>
 
-      {items.map(it=>{
+      {displayed.map(it=>{
         const visible=it.visible!==false;
         return (
           <div key={it.id} style={{...S.row,opacity:visible?1:0.45,transition:"opacity .25s",borderBottom:"1px solid #404040",paddingBottom:6,marginBottom:4}}>
@@ -656,6 +698,15 @@ function Main({cu,setCu,onLogout}){
           </div>
         );
       })}
+
+      {/* Bouton Voir tout / Réduire */}
+      {items.length>PREVIEW&&(
+        <div style={{textAlign:"center",margin:"6px 0 4px"}}>
+          <button onClick={()=>setShowAll(s=>({...s,[allKey]:!isAll}))} style={{fontSize:11,padding:"5px 14px",background:"transparent",border:"1px dashed "+C.border,color:C.muted}}>
+            {isAll?"Réduire ↑":`Voir tout (${items.length}) ↓`}
+          </button>
+        </div>
+      )}
 
       {canEdit&&<div style={{display:"flex",gap:6,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
         <span style={{width:30}}></span>
@@ -713,13 +764,17 @@ function Main({cu,setCu,onLogout}){
   const blPreviewDur = blPreviewAmount>0?blDuration(blPreviewAmount):0;
   const blPreviewEnd = blPreviewAmount>0?new Date(Date.now()+blPreviewDur*3600000):null;
 
+  // Affichage partiel des membres dans Database
+  const membersDisplayed=showAll.members?members:members.slice(0,PREVIEW);
+
   return (
     <div style={{padding:"1.25rem",maxWidth:740,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text}}>
       <style>{G}</style>
 
-      <input ref={fileRefPM}  type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_pm")} style={{display:"none"}}/>
-      <input ref={fileRefG}   type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_gang")} style={{display:"none"}}/>
-      <input ref={fileRefPMs} type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"pms")} style={{display:"none"}}/>
+      <input ref={fileRefPM}    type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_pm")} style={{display:"none"}}/>
+      <input ref={fileRefG}     type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_gang")} style={{display:"none"}}/>
+      <input ref={fileRefPMs}   type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"pms")} style={{display:"none"}}/>
+      <input ref={fileRefUsers} type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"users")} style={{display:"none"}}/>
 
       {importErr&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"1rem"}} onClick={()=>setImportErr(null)}>
@@ -751,9 +806,9 @@ function Main({cu,setCu,onLogout}){
 
       {importDlg&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"1rem"}} onClick={()=>setImportDlg(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:460,width:"100%"}}>
+          <div onClick={e=>e.stopPropagation()} style={{...card,maxWidth:480,width:"100%"}}>
             <div style={{fontWeight:700,fontSize:15,marginBottom:6}}>
-              Importer {importDlg.target==="items_pm"?"items PM":importDlg.target==="items_gang"?"items gangs":"petites mains"}
+              Importer {importDlg.target==="items_pm"?"items PM":importDlg.target==="items_gang"?"items gangs":importDlg.target==="users"?"accès":"petites mains"}
             </div>
             <div style={{fontSize:12,color:C.muted,marginBottom:14}}>
               {importDlg.items.length} ligne{importDlg.items.length>1?"s":""} valide{importDlg.items.length>1?"s":""} détectée{importDlg.items.length>1?"s":""}
@@ -761,33 +816,50 @@ function Main({cu,setCu,onLogout}){
             </div>
             {importDlg.items.length>0&&(
               <div style={{maxHeight:160,overflowY:"auto",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:8,padding:8,marginBottom:10,fontSize:12}}>
-                {importDlg.target!=="pms"&&(
-                  <div style={{display:"grid",gridTemplateColumns:"1.5fr 65px 70px",gap:6,fontSize:9,color:C.muted,textTransform:"uppercase",fontWeight:600,borderBottom:"1px solid "+C.border,paddingBottom:4,marginBottom:4}}>
-                    <span>Nom</span><span style={{textAlign:"right"}}>Prix</span><span style={{textAlign:"right"}}>Poids</span>
-                  </div>
-                )}
-                {importDlg.items.slice(0,10).map((it,i)=>(
-                  importDlg.target==="pms"
-                    ?<div key={i} style={{display:"flex",justifyContent:"space-between",padding:"2px 4px"}}>
-                      <span>{it.nom}</span>
-                      <span style={{color:C.muted}}>{catsPM.find(c=>c.id===it.categorie_id)?.nom||""}</span>
+                {importDlg.target==="items_pm"||importDlg.target==="items_gang"?(
+                  <>
+                    <div style={{display:"grid",gridTemplateColumns:"1.5fr 65px 70px",gap:6,fontSize:9,color:C.muted,textTransform:"uppercase",fontWeight:600,borderBottom:"1px solid "+C.border,paddingBottom:4,marginBottom:4}}>
+                      <span>Nom</span><span style={{textAlign:"right"}}>Prix</span><span style={{textAlign:"right"}}>Poids</span>
                     </div>
-                    :<div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 65px 70px",gap:6,padding:"2px 0"}}>
+                    {importDlg.items.slice(0,10).map((it,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"1.5fr 65px 70px",gap:6,padding:"2px 0"}}>
                       <span>{it.nom}</span>
                       <span style={{textAlign:"right",color:C.muted}}>{fmt(it.prix)}</span>
                       <span style={{textAlign:"right",color:C.blue}}>{fmtKgD(it.poids)}</span>
+                    </div>)}
+                  </>
+                ):importDlg.target==="users"?(
+                  <>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 80px 70px",gap:6,fontSize:9,color:C.muted,textTransform:"uppercase",fontWeight:600,borderBottom:"1px solid "+C.border,paddingBottom:4,marginBottom:4}}>
+                      <span>Nom</span><span>Code</span><span style={{textAlign:"right"}}>Rôle</span>
                     </div>
-                ))}
+                    {importDlg.items.slice(0,10).map((it,i)=><div key={i} style={{display:"grid",gridTemplateColumns:"1fr 80px 70px",gap:6,padding:"2px 0"}}>
+                      <span>{it.nom}</span>
+                      <span style={{color:C.muted,fontFamily:"monospace"}}>{"•".repeat(Math.min(it.code.length,8))}</span>
+                      <span style={{textAlign:"right",color:it.role==="admin"?C.red:C.blue,fontWeight:600,fontSize:11}}>{it.role}</span>
+                    </div>)}
+                  </>
+                ):(
+                  importDlg.items.slice(0,10).map((it,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"2px 4px"}}>
+                    <span>{it.nom}</span>
+                    <span style={{color:C.muted}}>{catsPM.find(c=>c.id===it.categorie_id)?.nom||""}</span>
+                  </div>)
+                )}
                 {importDlg.items.length>10&&<div style={{fontSize:11,color:C.muted,textAlign:"center",marginTop:4}}>… et {importDlg.items.length-10} de plus</div>}
               </div>
             )}
             {importDlg.skipped&&importDlg.skipped.length>0&&(
               <div style={{background:"rgba(212,146,10,0.08)",border:"1px solid rgba(212,146,10,0.3)",borderRadius:6,padding:"8px 10px",marginBottom:12,fontSize:11,color:C.amber}}>
-                ⚠ {importDlg.skipped.length} ligne{importDlg.skipped.length>1?"s":""} ignorée{importDlg.skipped.length>1?"s":""} — catégorie inconnue :
-                <div style={{marginTop:4,color:C.text}}>
-                  {[...new Set(importDlg.skipped.map(s=>s.catName))].slice(0,5).map((c,i)=><span key={i} style={{display:"inline-block",margin:"2px 4px 0 0",padding:"1px 6px",background:C.surfaceAlt,borderRadius:3,fontFamily:"monospace"}}>{c||"(vide)"}</span>)}
-                </div>
-                <div style={{marginTop:6,fontSize:10,color:C.muted}}>Crée d'abord ces catégories dans "Catégories PM" puis relance l'import.</div>
+                ⚠ {importDlg.skipped.length} ligne{importDlg.skipped.length>1?"s":""} ignorée{importDlg.skipped.length>1?"s":""}
+                {importDlg.target==="users"
+                  ?<div style={{marginTop:4,color:C.text}}>{importDlg.skipped.slice(0,4).map((s,i)=><div key={i} style={{fontSize:10}}>• {s.nom} — {s.reason}</div>)}</div>
+                  :<>
+                    <span> — catégorie inconnue :</span>
+                    <div style={{marginTop:4,color:C.text}}>
+                      {[...new Set(importDlg.skipped.map(s=>s.catName))].slice(0,5).map((c,i)=><span key={i} style={{display:"inline-block",margin:"2px 4px 0 0",padding:"1px 6px",background:C.surfaceAlt,borderRadius:3,fontFamily:"monospace"}}>{c||"(vide)"}</span>)}
+                    </div>
+                    <div style={{marginTop:6,fontSize:10,color:C.muted}}>Crée d'abord ces catégories puis relance l'import.</div>
+                  </>
+                }
               </div>
             )}
             {importDlg.items.length>0&&(<>
@@ -797,9 +869,9 @@ function Main({cu,setCu,onLogout}){
                   <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>Ajouter à l'existant</div>
                   <div style={{fontSize:11,color:C.muted}}>Les nouvelles lignes sont ajoutées. L'existant est conservé.</div>
                 </button>
-                <button onClick={()=>{if(confirm("Supprimer TOUT avant import ?"))confirmImport("replace");}} style={{padding:"10px 14px",textAlign:"left",background:"rgba(224,85,85,0.08)",border:"1px solid rgba(224,85,85,0.3)"}}>
+                <button onClick={()=>{if(confirm("Supprimer TOUT avant import ?"+(importDlg.target==="users"?" (Ton compte sera préservé.)":"")))confirmImport("replace");}} style={{padding:"10px 14px",textAlign:"left",background:"rgba(224,85,85,0.08)",border:"1px solid rgba(224,85,85,0.3)"}}>
                   <div style={{fontWeight:700,fontSize:13,marginBottom:2,color:C.red}}>Écraser tout</div>
-                  <div style={{fontSize:11,color:C.muted}}>Supprime tout avant import.</div>
+                  <div style={{fontSize:11,color:C.muted}}>Supprime tout avant import.{importDlg.target==="users"&&" Ton compte est préservé."}</div>
                 </button>
               </div>
             </>)}
@@ -894,17 +966,31 @@ function Main({cu,setCu,onLogout}){
             )}
           </div>
 
-          <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",margin:"18px 0 10px"}}>Comptes membres</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10}}>
-            {members.map(m=>(
-              <div key={m.id} style={{...card,padding:"12px 14px"}}>
-                <div style={{fontSize:12,color:C.muted,marginBottom:6,fontWeight:500}}>{m.nom}</div>
-                <div style={{display:"flex",alignItems:"center",gap:4}}>
-                  <input type="number" value={m.solde} onChange={e=>{const s=+e.target.value;setMembers(ms=>ms.map(x=>x.id===m.id?{...x,solde:s}:x));sb.from("membres_comptes").update({solde:s}).eq("id",m.id);}} style={{flex:1,fontSize:18,fontWeight:700,border:"none!important",background:"transparent!important",color:C.text,padding:"0!important",minWidth:0,boxShadow:"none!important"}}/>
-                  <span style={{fontSize:13,color:C.muted,fontWeight:600}}>$</span>
+          {/* COMPTES MEMBRES — police plus grosse + alerte rouge si solde < seuil */}
+          <div style={{display:"flex",alignItems:"center",gap:10,margin:"18px 0 10px"}}>
+            <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em"}}>Comptes membres</span>
+            <span style={{fontSize:10,color:C.muted}}>· seuil alerte : <strong style={{color:C.red}}>{fmt(alertThreshold)}</strong></span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:10}}>
+            {members.map(m=>{
+              const low=m.solde<alertThreshold;
+              return (
+                <div key={m.id} style={{
+                  ...card,
+                  padding:"14px 16px",
+                  background:low?"rgba(224,85,85,0.08)":C.surface,
+                  border:"1px solid "+(low?"rgba(224,85,85,0.4)":C.border),
+                  transition:"all .25s"
+                }}>
+                  <div style={{fontSize:15,color:low?C.red:C.text,marginBottom:8,fontWeight:600}}>{m.nom}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <input type="number" value={m.solde} onChange={e=>{const s=+e.target.value;setMembers(ms=>ms.map(x=>x.id===m.id?{...x,solde:s}:x));sb.from("membres_comptes").update({solde:s}).eq("id",m.id);}} style={{flex:1,fontSize:20,fontWeight:700,border:"none!important",background:"transparent!important",color:low?C.red:C.text,padding:"0!important",minWidth:0,boxShadow:"none!important"}}/>
+                    <span style={{fontSize:14,color:low?C.red:C.muted,fontWeight:600}}>$</span>
+                  </div>
+                  {low&&<div style={{fontSize:10,color:C.red,marginTop:4,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>⚠ Solde faible</div>}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -937,16 +1023,21 @@ function Main({cu,setCu,onLogout}){
             }
           </div>
 
+          {/* Liasses + Argent sale en 2 colonnes */}
           <div style={{borderTop:"1px solid "+C.border,paddingTop:12,marginBottom:14}}>
-            <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>{"Liasses"+(aLiasse>0?" · "+aLiasse+"$ / liasse":"")}</div>
-            <input type="number" min="0" placeholder="0 liasses" style={{width:140}} value={tx.liasseQte} onChange={e=>setTx(f=>({...f,liasseQte:e.target.value}))}/>
-          </div>
-          {tx.dest==="pm"&&(
-            <div style={{borderTop:"1px solid "+C.border,paddingTop:12,marginBottom:14}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>Argent sale · 40%</div>
-              <input type="number" min="0" placeholder="0$" style={{width:160}} value={tx.argentSale} onChange={e=>setTx(f=>({...f,argentSale:e.target.value}))}/>
+            <div style={{display:"grid",gridTemplateColumns:tx.dest==="pm"?"1fr 1fr":"1fr",gap:14}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{"Liasses"+(aLiasse>0?" · "+aLiasse+"$":"")}</div>
+                <input type="number" min="0" placeholder="0 liasses" style={{width:"100%"}} value={tx.liasseQte} onChange={e=>setTx(f=>({...f,liasseQte:e.target.value}))}/>
+              </div>
+              {tx.dest==="pm"&&(
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>Argent sale · 40%</div>
+                  <input type="number" min="0" placeholder="0$" style={{width:"100%"}} value={tx.argentSale} onChange={e=>setTx(f=>({...f,argentSale:e.target.value}))}/>
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* TOTAL : $ | Kg côte à côte */}
           <div style={{borderTop:"1px solid "+C.border,paddingTop:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1071,8 +1162,8 @@ function Main({cu,setCu,onLogout}){
           <div style={card}><div style={S.sec}>Petites mains{!isAdmin&&" · lecture seule"}</div><PMList/></div>
           <div style={card}><div style={S.sec}>Catégories gangs</div><CatTable cats={catsGang} setCats={setCatsGang} table="categories_gang" eId={eCG} setEId={setECG} nc={nCG} setNc={setNCG}/></div>
           <div style={card}><div style={S.sec}>Gangs{!isAdmin&&" · lecture seule"}</div><GangList/></div>
-          <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm"/></div>
-          <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="items_gang"/></div>
+          <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm" allKey="itemsPM"/></div>
+          <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="items_gang" allKey="itemsG"/></div>
 
           {isAdmin&&(
             <div style={card}>
@@ -1130,14 +1221,24 @@ function Main({cu,setCu,onLogout}){
 
           {isAdmin&&(
             <div style={card}>
-              <div style={S.sec}>Membres — comptes</div>
-              {members.map(m=>(
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div style={{...S.sec,margin:0}}>Membres — comptes</div>
+                <span style={{fontSize:11,color:C.muted}}>{members.length} membre{members.length>1?"s":""}</span>
+              </div>
+              {membersDisplayed.map(m=>(
                 <div key={m.id} style={S.row}>
                   <span style={{flex:1,fontSize:14}}>{m.nom}</span>
-                  <span style={{fontSize:13,color:C.muted}}>{fmt(m.solde)}</span>
+                  <span style={{fontSize:13,color:m.solde<alertThreshold?C.red:C.muted,fontWeight:m.solde<alertThreshold?600:400}}>{fmt(m.solde)}</span>
                   <button onClick={async()=>{await sb.from("membres_comptes").delete().eq("id",m.id);setMembers(ms=>ms.filter(x=>x.id!==m.id));}} style={{color:C.red}}>Suppr.</button>
                 </div>
               ))}
+              {members.length>PREVIEW&&(
+                <div style={{textAlign:"center",margin:"6px 0 10px"}}>
+                  <button onClick={()=>setShowAll(s=>({...s,members:!s.members}))} style={{fontSize:11,padding:"5px 14px",background:"transparent",border:"1px dashed "+C.border,color:C.muted}}>
+                    {showAll.members?"Réduire ↑":`Voir tout (${members.length}) ↓`}
+                  </button>
+                </div>
+              )}
               <div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
                 <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} value={nBM.nom} onChange={e=>setNBM(f=>({...f,nom:e.target.value}))}/></div>
                 <div><div style={S.lbl}>Solde ($)</div><input type="number" style={{width:90}} value={nBM.solde} onChange={e=>setNBM(f=>({...f,solde:e.target.value}))}/></div>
@@ -1162,9 +1263,32 @@ function Main({cu,setCu,onLogout}){
             {pwdMsg&&<div style={{marginTop:10,fontSize:12,fontWeight:600,color:pwdMsg.t==="ok"?C.green:C.red}}>{pwdMsg.m}</div>}
           </div>
 
+          {/* Paramètres généraux — seuil d'alerte */}
+          {isAdmin&&(
+            <div style={card}>
+              <div style={S.sec}>Paramètres généraux — admin uniquement</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"end"}}>
+                <div>
+                  <div style={S.lbl}>Seuil d'alerte solde compte ($)</div>
+                  <input type="number" min="0" style={S.inp} value={thresholdInput} onChange={e=>setThresholdInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveThreshold()}/>
+                  <div style={{fontSize:11,color:C.muted,marginTop:5}}>En-dessous de ce seuil, le compte membre s'affiche en rouge sur le tableau de bord.</div>
+                </div>
+                <button onClick={saveThreshold} style={{fontWeight:700,background:C.blue,color:"#1a1a1a",border:"none"}}>Sauvegarder</button>
+              </div>
+              {thresholdMsg&&<div style={{marginTop:10,fontSize:12,fontWeight:600,color:thresholdMsg.t==="ok"?C.green:C.red}}>{thresholdMsg.m}</div>}
+            </div>
+          )}
+
+          {/* Gestion des accès — admin only */}
           {isAdmin&&(
             <div style={{...card,border:"1px solid rgba(212,132,10,0.4)",background:"rgba(212,132,10,0.06)"}}>
-              <div style={{...S.sec,color:C.amber}}>Gestion des accès — admin uniquement</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div style={{...S.sec,color:C.amber,margin:0}}>Gestion des accès — admin uniquement</div>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>exportCSV("users")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
+                  <button onClick={()=>triggerImport("users")} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>
+                </div>
+              </div>
               {users.map(u=>(
                 <div key={u.id} style={S.row}>
                   <span style={{flex:1,fontSize:14}}>{u.nom}</span>
@@ -1179,6 +1303,7 @@ function Main({cu,setCu,onLogout}){
                 <div><div style={S.lbl}>Rôle</div><select style={S.inp} value={nU.role} onChange={e=>setNU(f=>({...f,role:e.target.value}))}><option value="membre">Membre</option><option value="admin">Admin</option></select></div>
                 <button onClick={async()=>{if(!nU.nom||!nU.code)return;const{data}=await sb.from("users").insert({nom:nU.nom,code:nU.code,role:nU.role}).select().single();if(data)setUsers(p=>[...p,data]);setNU({nom:"",code:"",role:"membre"});}} style={{fontWeight:700,alignSelf:"end"}}>+</button>
               </div>
+              <div style={{marginTop:10,fontSize:10,color:C.muted,fontStyle:"italic"}}>Format CSV import : <code style={{background:C.surfaceAlt,padding:"1px 5px",borderRadius:3,fontFamily:"monospace"}}>nom;code;role</code> (role = admin ou membre)</div>
             </div>
           )}
         </div>
