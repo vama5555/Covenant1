@@ -339,6 +339,102 @@ function MemberCard({m,low,setMembers,onLog}){
   );
 }
 
+// ── Carte d'un appart avec save sur blur / Entrée (anti-lag Realtime) ──
+function AppartCard({a,updateAppart,copied,setCopied}){
+  const ac=getCat(a.categorie);
+  const [coffre,setCoffre]=useState(String(a.coffre));
+  const [stock,setStock]=useState(String(a.stock));
+  const [coffreDirty,setCoffreDirty]=useState(false);
+  const [stockDirty,setStockDirty]=useState(false);
+  const [coffreStatus,setCoffreStatus]=useState(null);
+  const [stockStatus,setStockStatus]=useState(null);
+
+  // Synchro auto si l'appart change ailleurs (Realtime), sauf si l'user est en train de taper
+  useEffect(()=>{ if(!coffreDirty) setCoffre(String(a.coffre)); },[a.coffre,coffreDirty]);
+  useEffect(()=>{ if(!stockDirty) setStock(String(a.stock));   },[a.stock,stockDirty]);
+
+  async function saveCoffre(){
+    const v=Math.round(+coffre||0);
+    if(v===a.coffre){setCoffreDirty(false);return;}
+    setCoffreStatus("saving");
+    await updateAppart(a.id,{coffre:v});
+    setCoffreDirty(false);
+    setCoffreStatus("saved");
+    setTimeout(()=>setCoffreStatus(null),1200);
+  }
+  async function saveStock(){
+    const v=Math.round(+stock||0);
+    if(v===a.stock){setStockDirty(false);return;}
+    setStockStatus("saving");
+    await updateAppart(a.id,{stock:v});
+    setStockDirty(false);
+    setStockStatus("saved");
+    setTimeout(()=>setStockStatus(null),1200);
+  }
+
+  const lblColor=(dirty,status)=>{
+    if(status==="saving")return C.blue;
+    if(status==="saved")return C.green;
+    if(dirty)return C.amber;
+    return C.muted;
+  };
+  const borderColor=(dirty,status)=>{
+    if(status==="saved")return "rgba(61,191,143,0.6)";
+    if(dirty||status==="saving")return "rgba(212,146,10,0.6)";
+    return "#585858";
+  };
+
+  return (
+    <div style={{...card,borderLeft:"3px solid "+ac.color,padding:"12px 14px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+        <span style={{flex:"0 0 38%",fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.nom}</span>
+        {a.code?(
+          <button onClick={()=>{navigator.clipboard?.writeText(a.code);setCopied(a.id);setTimeout(()=>setCopied(null),1500);}}
+            style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,padding:"3px 10px",background:C.surfaceAlt,border:"1px solid "+(copied===a.id?C.green:C.border),borderRadius:6,color:copied===a.id?C.green:C.muted,transition:"all .2s",minWidth:0}}>
+            <span style={{fontFamily:"monospace",fontSize:12,color:copied===a.id?C.green:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.code}</span>
+            <span style={{fontSize:11,flexShrink:0}}>{copied===a.id?"✓":"⧉"}</span>
+          </button>
+        ):(
+          <div style={{flex:1,padding:"3px 10px",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,fontSize:11,color:C.muted,fontStyle:"italic"}}>pas de code</div>
+        )}
+      </div>
+      <div style={{marginBottom:8}}>
+        <span style={{fontSize:10,padding:"2px 8px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{fontSize:10,color:lblColor(coffreDirty,coffreStatus),fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Coffre</span>
+            {coffreStatus==="saving"&&<span style={{fontSize:9,color:C.blue,fontWeight:600}}>•••</span>}
+            {coffreStatus==="saved"&&<span style={{fontSize:9,color:C.green,fontWeight:600}}>✓</span>}
+            {coffreDirty&&!coffreStatus&&<span style={{fontSize:9,color:C.amber,fontWeight:600}}>•</span>}
+          </div>
+          <input type="number" value={coffre}
+            onChange={e=>{setCoffre(e.target.value);setCoffreDirty(true);}}
+            onBlur={saveCoffre}
+            onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
+            style={{width:"100%",fontSize:13,marginBottom:5,padding:"5px 8px",border:"1px solid "+borderColor(coffreDirty,coffreStatus)+"!important"}}/>
+          <Bar val={a.coffre} max={a.max_coffre}/>
+        </div>
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <span style={{fontSize:10,color:lblColor(stockDirty,stockStatus),fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Stock</span>
+            {stockStatus==="saving"&&<span style={{fontSize:9,color:C.blue,fontWeight:600}}>•••</span>}
+            {stockStatus==="saved"&&<span style={{fontSize:9,color:C.green,fontWeight:600}}>✓</span>}
+            {stockDirty&&!stockStatus&&<span style={{fontSize:9,color:C.amber,fontWeight:600}}>•</span>}
+          </div>
+          <input type="number" value={stock}
+            onChange={e=>{setStock(e.target.value);setStockDirty(true);}}
+            onBlur={saveStock}
+            onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
+            style={{width:"100%",fontSize:13,marginBottom:5,padding:"5px 8px",border:"1px solid "+borderColor(stockDirty,stockStatus)+"!important"}}/>
+          <Bar val={a.stock} max={a.max_stock}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Main({cu,setCu,onLogout}){
   const isAdmin=cu.role==="admin";
   const [tab,setTab]=useState("dashboard");
@@ -1485,32 +1581,9 @@ function Main({cu,setCu,onLogout}){
           </div>
           {!isAdmin&&<div style={{fontSize:11,color:C.muted,marginBottom:10,fontStyle:"italic"}}>💡 Tu peux modifier le coffre et le stock. Pour le reste (nom, catégorie, code, ajout), va dans Database (admin).</div>}
           <div data-mobile="apparts-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {sortedAp.map(a=>{
-              const ac=getCat(a.categorie);
-              return(
-                <div key={a.id} style={{...card,borderLeft:"3px solid "+ac.color,padding:"12px 14px"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                    <span style={{flex:"0 0 38%",fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.nom}</span>
-                    {a.code?(
-                      <button onClick={()=>{navigator.clipboard?.writeText(a.code);setCopied(a.id);setTimeout(()=>setCopied(null),1500);}}
-                        style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,padding:"3px 10px",background:C.surfaceAlt,border:"1px solid "+(copied===a.id?C.green:C.border),borderRadius:6,color:copied===a.id?C.green:C.muted,transition:"all .2s",minWidth:0}}>
-                        <span style={{fontFamily:"monospace",fontSize:12,color:copied===a.id?C.green:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.code}</span>
-                        <span style={{fontSize:11,flexShrink:0}}>{copied===a.id?"✓":"⧉"}</span>
-                      </button>
-                    ):(
-                      <div style={{flex:1,padding:"3px 10px",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,fontSize:11,color:C.muted,fontStyle:"italic"}}>pas de code</div>
-                    )}
-                  </div>
-                  <div style={{marginBottom:8}}>
-                    <span style={{fontSize:10,padding:"2px 8px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                    <div><div style={{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Coffre</div><input type="number" value={a.coffre} onChange={e=>updateAppart(a.id,{coffre:+e.target.value})} style={{width:"100%",fontSize:13,marginBottom:5,padding:"5px 8px"}}/><Bar val={a.coffre} max={a.max_coffre}/></div>
-                    <div><div style={{fontSize:10,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Stock</div><input type="number" value={a.stock} onChange={e=>updateAppart(a.id,{stock:+e.target.value})} style={{width:"100%",fontSize:13,marginBottom:5,padding:"5px 8px"}}/><Bar val={a.stock} max={a.max_stock}/></div>
-                  </div>
-                </div>
-              );
-            })}
+            {sortedAp.map(a=>(
+              <AppartCard key={a.id} a={a} updateAppart={updateAppart} copied={copied} setCopied={setCopied}/>
+            ))}
           </div>
         </div>
       )}
