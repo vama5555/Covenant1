@@ -422,7 +422,7 @@ function Main({cu,setCu,onLogout}){
                           },
     };
 
-    // Petit debounce par table pour éviter de recharger 5 fois si plusieurs events arrivent en rafale
+    // Petit debounce par table (50ms) pour grouper les rafales d'events sans être perceptible
     const timers = {};
     const triggerReload = (table) => {
       if(!reloaders[table])return;
@@ -430,7 +430,7 @@ function Main({cu,setCu,onLogout}){
       timers[table] = setTimeout(()=>{
         reloaders[table]();
         timers[table] = null;
-      }, 250);
+      }, 50);
     };
 
     // Une seule souscription qui écoute toutes les tables
