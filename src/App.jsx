@@ -772,7 +772,7 @@ function Main({cu,setCu,onLogout}){
     log("items",newVal?"unhide":"hide",`a ${newVal?"affiché":"masqué"} l'item <b>${item.nom}</b> ${newVal?"👁":"🚫"}`);
   }
 
-  const TABS_BASE=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"stats",label:"📊 Stats"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
+  const TABS_BASE=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"stats",label:"Stats"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
   const TABS=isAdmin?[...TABS_BASE,{id:"bigbrother",label:"👁 Bigbrother",admin:true}]:TABS_BASE;
   const ns=id=>{
     const isBB=id==="bigbrother";
@@ -1095,7 +1095,7 @@ function Main({cu,setCu,onLogout}){
   const membersDisplayed=showAll.members?members:members.slice(0,PREVIEW);
 
   return (
-    <div data-mobile="container" style={{padding:"1.25rem",maxWidth:740,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text}}>
+    <div data-mobile="container" style={{padding:"1.25rem",maxWidth:920,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text}}>
       <style>{G}</style>
 
       <input ref={fileRefPM}    type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_pm")} style={{display:"none"}}/>
@@ -1662,6 +1662,22 @@ function StatsView({history,blanchHistory}){
   const txCount=txInPeriod.filter(h=>h.dest==="pm").length;
   const avgTx=txCount>0?Math.round(totPaye/txCount):0;
 
+  // Calcul bénéfice : valeur brute des objets - ce qui a été payé aux PM
+  // Pour chaque transaction PM, on compare prix*qte (brut) vs sous_total (payé)
+  const benefice=useMemo(()=>{
+    let b=0;
+    txInPeriod.filter(h=>h.dest==="pm").forEach(h=>{
+      if(h.types?.includes("objets")&&h.lignes){
+        h.lignes.forEach(l=>{
+          const brut=(+l.prix||0)*(+l.qte||0);
+          const paye=(+l.sous_total||0);
+          b+=(brut-paye);
+        });
+      }
+    });
+    return Math.round(b);
+  },[txInPeriod]);
+
   // Total blanchi sur la période
   const blanchInPeriod=useMemo(()=>{
     if(!fromDate)return blanchHistory;
@@ -1741,7 +1757,7 @@ function StatsView({history,blanchHistory}){
   return (
     <div>
       <div data-mobile="bb-header" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
-        <h3 style={{fontSize:16,fontWeight:600,margin:0,color:C.text}}>📊 Stats</h3>
+        <h3 style={{fontSize:16,fontWeight:600,margin:0,color:C.text}}>Stats</h3>
         <div style={{display:"flex",gap:4,background:"#252525",padding:3,borderRadius:8,border:"1px solid "+C.border,flexWrap:"wrap"}}>
           <button onClick={()=>setPeriod("today")} style={periodBtn("today")}>Aujourd'hui</button>
           <button onClick={()=>setPeriod("7")} style={periodBtn("7")}>7 jours</button>
@@ -1756,22 +1772,27 @@ function StatsView({history,blanchHistory}){
         <div style={{flex:1,height:1,background:C.border}}/>
       </div>
 
-      <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+      <div data-mobile="grid-3" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Payé aux PM</div>
-          <div style={{fontSize:24,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totPaye)}</div>
-          <div style={{fontSize:11,color:C.muted,marginTop:4}}>
-            {txCount} transaction{txCount!==1?"s":""}
-            {txCount>0&&" · moy. "+fmt(avgTx)}
-          </div>
+          <div style={{fontSize:22,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totPaye)}</div>
+          {txCount>0&&<div style={{fontSize:11,color:C.muted,marginTop:4}}>
+            {txCount} transaction{txCount!==1?"s":""} · moy. {fmt(avgTx)}
+          </div>}
+        </div>
+        <div style={card}>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Bénéfice PM</div>
+          <div style={{fontSize:22,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(benefice)}</div>
+          {totPaye>0&&<div style={{fontSize:11,color:C.muted,marginTop:4}}>
+            soit {Math.round(benefice/(benefice+totPaye)*100)||0}% de marge
+          </div>}
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Total blanchi</div>
-          <div style={{fontSize:24,fontWeight:600,color:C.amber,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBlanch)}</div>
-          <div style={{fontSize:11,color:C.muted,marginTop:4}}>
-            {cycleCount} cycle{cycleCount!==1?"s":""}
-            {cycleCount>0&&" · durée moy. "+avgDur+"h"}
-          </div>
+          <div style={{fontSize:22,fontWeight:600,color:C.amber,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBlanch)}</div>
+          {cycleCount>0&&<div style={{fontSize:11,color:C.muted,marginTop:4}}>
+            {cycleCount} cycle{cycleCount!==1?"s":""} · durée moy. {avgDur}h
+          </div>}
         </div>
       </div>
 
