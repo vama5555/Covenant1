@@ -742,7 +742,7 @@ function Main({cu,setCu,onLogout}){
     if(!totObj&&!totLia&&!totArg)return;
     const types=[]; const det={};
     if(totObj>0){types.push("objets");det.lignes=aItems.filter(it=>+(tx.qtes[it.id]||0)>0).map(it=>({nom:it.nom,prix:it.prix,qte:+(tx.qtes[it.id]),sous_total:it.prix*(+(tx.qtes[it.id]))*(aPct/100),poids:(+(it.poids)||0)*(+(tx.qtes[it.id]))}));}
-    if(totLia>0){types.push("liasses");det.liasse_qte=+(tx.liasseQte);det.taux_liasse=aLiasse;det.valeur_face=70*(+(tx.liasseQte));det.poids_liasses=(+(tx.liasseQte))*0.1;}
+    if(totLia>0){types.push("liasses");det.liasse_qte=+(tx.liasseQte);det.taux_liasse=aLiasse;det.valeur_face=70*(+(tx.liasseQte));}
     if(totArg>0&&tx.dest==="pm"){types.push("argent");det.argent_sale=+(tx.argentSale);}
     const mb=members.find(m=>m.id===tx.membreId)||null;
     const payload={
