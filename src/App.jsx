@@ -1892,11 +1892,14 @@ function StatsView({history,blanchHistory}){
   const txCount=txInPeriod.filter(h=>h.dest==="pm").length;
   const avgTx=txCount>0?Math.round(totPaye/txCount):0;
 
-  // Calcul bénéfice : valeur brute des objets - ce qui a été payé aux PM
-  // Pour chaque transaction PM, on compare prix*qte (brut) vs sous_total (payé)
+  // Calcul bénéfice : valeur brute - ce qui a été payé aux PM
+  // - Objets : (prix × qte) - sous_total
+  // - Liasses : valeur_face (70$ × qte) - (taux_liasse × qte)
+  // - Argent sale : argent_sale - (argent_sale × 40%) = argent_sale × 60%
   const benefice=useMemo(()=>{
     let b=0;
     txInPeriod.filter(h=>h.dest==="pm").forEach(h=>{
+      // Objets : valeur brute - payé à la PM
       if(h.types?.includes("objets")&&h.lignes){
         h.lignes.forEach(l=>{
           const brut=(+l.prix||0)*(+l.qte||0);
@@ -1904,8 +1907,38 @@ function StatsView({history,blanchHistory}){
           b+=(brut-paye);
         });
       }
+      // Liasses : valeur faciale (70$) - taux payé à la PM
+      if(h.types?.includes("liasses")){
+        const qte=(+h.liasse_qte||0);
+        const valFace=(+h.valeur_face||(70*qte));
+        const payeLiasses=(+h.taux_liasse||0)*qte;
+        b+=(valFace-payeLiasses);
+      }
+      // Argent sale : 100% reçu - 40% payé à la PM = 60% de bénéfice
+      if(h.types?.includes("argent")){
+        const argentSale=(+h.argent_sale||0);
+        const payeArgent=Math.round(argentSale*0.4);
+        b+=(argentSale-payeArgent);
+      }
     });
     return Math.round(b);
+  },[txInPeriod]);
+
+  // Valeur brute totale (utilisée pour calculer le % de marge correctement)
+  const totBrut=useMemo(()=>{
+    let v=0;
+    txInPeriod.filter(h=>h.dest==="pm").forEach(h=>{
+      if(h.types?.includes("objets")&&h.lignes){
+        h.lignes.forEach(l=>{ v+=(+l.prix||0)*(+l.qte||0); });
+      }
+      if(h.types?.includes("liasses")){
+        v+=(+h.valeur_face||((+h.liasse_qte||0)*70));
+      }
+      if(h.types?.includes("argent")){
+        v+=(+h.argent_sale||0);
+      }
+    });
+    return Math.round(v);
   },[txInPeriod]);
 
   // Total blanchi sur la période
@@ -2006,23 +2039,14 @@ function StatsView({history,blanchHistory}){
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Payé aux PM</div>
           <div style={{fontSize:22,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totPaye)}</div>
-          {txCount>0&&<div style={{fontSize:11,color:C.muted,marginTop:4}}>
-            {txCount} transaction{txCount!==1?"s":""} · moy. {fmt(avgTx)}
-          </div>}
         </div>
         <div style={card}>
-          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Bénéfice PM</div>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Bénéfice (sale)</div>
           <div style={{fontSize:22,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(benefice)}</div>
-          {totPaye>0&&<div style={{fontSize:11,color:C.muted,marginTop:4}}>
-            soit {Math.round(benefice/(benefice+totPaye)*100)||0}% de marge
-          </div>}
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Total blanchi</div>
           <div style={{fontSize:22,fontWeight:600,color:C.amber,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBlanch)}</div>
-          {cycleCount>0&&<div style={{fontSize:11,color:C.muted,marginTop:4}}>
-            {cycleCount} cycle{cycleCount!==1?"s":""} · durée moy. {avgDur}h
-          </div>}
         </div>
       </div>
 
