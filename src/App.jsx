@@ -2035,18 +2035,22 @@ function StatsView({history,blanchHistory}){
         <div style={{flex:1,height:1,background:C.border}}/>
       </div>
 
-      <div data-mobile="grid-3" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+      <div data-mobile="grid-4" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Payé aux PM</div>
-          <div style={{fontSize:22,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totPaye)}</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totPaye)}</div>
         </div>
         <div style={card}>
-          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Bénéfice (sale)</div>
-          <div style={{fontSize:22,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(benefice)}</div>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Argent sale généré PM</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBrut)}</div>
+        </div>
+        <div style={card}>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Bénéfice net estimé</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(Math.round(totBrut*0.8)-totPaye)}</div>
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Total blanchi</div>
-          <div style={{fontSize:22,fontWeight:600,color:C.amber,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBlanch)}</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.amber,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBlanch)}</div>
         </div>
       </div>
 
