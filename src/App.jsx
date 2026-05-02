@@ -1520,8 +1520,7 @@ function Main({cu,setCu,onLogout}){
             {/* Stock apparts : couleur progressive selon remplissage */}
             <div style={card}>
               <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Stock apparts</div>
-              <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:stockColor}}>{fmtKg(totSU)+" / "+fmtKg(totSM)}</div>
-              <div style={{fontSize:11,color:stockColor,marginTop:3,fontWeight:stockPct>=70?600:400}}>{stockPct}% occupé{stockPct>=90?" ⚠":""}</div>
+              <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:stockColor}}>{fmtKg(totSU)+" / "+fmtKg(totSM)}{stockPct>=90?" ⚠":""}</div>
             </div>
           </div>
 
@@ -1775,7 +1774,7 @@ function Main({cu,setCu,onLogout}){
 
       {/* ═══ STATS ═══ */}
       {tab==="stats"&&(
-        <StatsView history={history} blanchHistory={blanchHistory}/>
+        <StatsView history={history} blanchHistory={blanchHistory} setTab={setTab} setHFil={setHFil} setHFrom={setHFrom} setHTo={setHTo}/>
       )}
 
       {tab==="database"&&(
@@ -1950,7 +1949,7 @@ function Main({cu,setCu,onLogout}){
 }
 
 // ── Composant onglet Stats ──────────────────────────────────────────
-function StatsView({history,blanchHistory}){
+function StatsView({history,blanchHistory,setTab,setHFil,setHFrom,setHTo}){
   const [period,setPeriod]=useState("7"); // "today" | "7" | "30" | "total"
 
   // Calcul de la date de début selon la période
@@ -1964,6 +1963,24 @@ function StatsView({history,blanchHistory}){
     }
     return d;
   },[period]);
+
+  // Drilldown : clic sur une PM/Gang → bascule vers Historique avec filtres pré-remplis
+  function goToHistory(dest, nom){
+    if(!setTab)return;
+    // Convertir la période Stats en plage de dates pour Historique
+    let fromStr, toStr=today();
+    if(period==="total"){
+      fromStr=ago(3650); // ~10 ans = "depuis le début"
+    } else if(period==="today"){
+      fromStr=today();
+    } else {
+      fromStr=ago(parseInt(period,10));
+    }
+    setHFrom(fromStr);
+    setHTo(toStr);
+    setHFil({who:dest+":"+nom});
+    setTab("historique");
+  }
 
   // Filtrer transactions sur la période
   const txInPeriod=useMemo(()=>{
@@ -2084,19 +2101,25 @@ function StatsView({history,blanchHistory}){
   const rankBgs=["rgba(212,146,10,0.18)","rgba(160,160,160,0.18)","rgba(212,132,10,0.12)","rgba(120,120,120,0.15)","rgba(120,120,120,0.15)"];
   const rankColors=[C.text,C.muted,"#888","#666","#555"];
 
-  function renderTopRow(arr,emptyLabel){
+  function renderTopRow(arr,emptyLabel,dest){
     if(arr.length===0){
       return <div style={{color:C.muted,fontSize:11,fontStyle:"italic",textAlign:"center",padding:14}}>{emptyLabel}</div>;
     }
     return arr.map((r,i)=>(
-      <div key={r.nom+i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<arr.length-1?"1px solid #404040":"none"}}>
+      <div key={r.nom+i}
+        onClick={()=>goToHistory(dest,r.nom)}
+        title={"Voir l'historique de "+r.nom}
+        style={{display:"flex",alignItems:"center",gap:10,padding:"8px 8px",borderBottom:i<arr.length-1?"1px solid #404040":"none",cursor:"pointer",borderRadius:6,transition:"background .15s",margin:"0 -8px"}}
+        onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
+        onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
         <div style={{width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,flexShrink:0,background:rankBgs[i],color:rankColors[i]}}>{i+1}</div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.nom}</div>
           <div style={{fontSize:10,color:C.muted}}>{r.cat||"—"} · {r.count} tx</div>
         </div>
-        <div style={{textAlign:"right",flexShrink:0}}>
+        <div style={{textAlign:"right",flexShrink:0,display:"flex",alignItems:"center",gap:6}}>
           <div style={{fontSize:13,fontWeight:600,color:C.green}}>{fmt(r.total)}</div>
+          <span style={{fontSize:10,color:C.muted,opacity:0.5}}>›</span>
         </div>
       </div>
     ));
@@ -2170,11 +2193,11 @@ function StatsView({history,blanchHistory}){
       <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Top 5 PM</div>
-          {renderTopRow(topPM,"Aucune PM payée sur la période")}
+          {renderTopRow(topPM,"Aucune PM payée sur la période","pm")}
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Top 5 Gangs</div>
-          {renderTopRow(topGang,"Aucun gang payé sur la période")}
+          {renderTopRow(topGang,"Aucun gang payé sur la période","gang")}
         </div>
       </div>
     </div>
