@@ -159,6 +159,7 @@ function Login({onLogin}){
   return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
     <style>{G}</style>
     <div style={{marginBottom:32,textAlign:"center"}}>
+      <img src="/SClogo.png" alt="Silent Covenant" style={{width:96,height:96,margin:"0 auto 12px",display:"block",objectFit:"contain"}}/>
       <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.18em",marginBottom:8}}>Accès sécurisé</div>
       <h1 style={{fontSize:28,fontWeight:700,color:C.text,margin:0}}>Compta Covenant</h1>
     </div>
@@ -914,6 +915,10 @@ function Main({cu,setCu,onLogout}){
   const [nBM,setNBM]=useState({nom:"",solde:""});
   const [nU,setNU]=useState({nom:"",code:"",role:"membre"});
 
+  // États "Voir tous" pour les listes pliables Database
+  const [showAll,setShowAll]=useState({catsPM:false,catsGang:false,pms:false,gangs:false,itemsPM:false,itemsG:false,apparts:false});
+  const PREVIEW=5;
+
   const [eApId,setEApId]=useState(null);
   const [eApV,setEApV]=useState({});
   const [nAp,setNAp]=useState({nom:"",categorie:"recel",max_coffre:"",max_stock:"",code:""});
@@ -1119,9 +1124,11 @@ function Main({cu,setCu,onLogout}){
       setCats(cs=>cs.filter(x=>x.id!==id));
       if(c) log("settings","cat_delete",`a supprimé la catégorie ${isPM?"PM":"gang"} <b>${c.nom}</b>`);
     }
+    const allKey = isPM?"catsPM":"catsGang";
+    const visible = showAll[allKey] ? cats : cats.slice(0,PREVIEW);
     return <>
       <div style={{display:"grid",gridTemplateColumns:"1fr 80px 90px auto",gap:8,marginBottom:8}}><span style={S.lbl}>Nom</span><span style={S.lbl}>% objets</span><span style={S.lbl}>$/liasse</span><span/></div>
-      {cats.map(c=>(
+      {visible.map(c=>(
         <div key={c.id} style={{display:"grid",gridTemplateColumns:"1fr 80px 90px auto",gap:8,alignItems:"center",marginBottom:8}}>
           {isAdmin&&eId===c.id
             ?<><input style={S.inp} value={c.nom} onChange={e=>setCats(cs=>cs.map(x=>x.id===c.id?{...x,nom:e.target.value}:x))}/><input type="number" style={S.inp} value={c.pct_objets} onChange={e=>setCats(cs=>cs.map(x=>x.id===c.id?{...x,pct_objets:+e.target.value}:x))}/><input type="number" style={S.inp} value={c.taux_liasse} onChange={e=>setCats(cs=>cs.map(x=>x.id===c.id?{...x,taux_liasse:+e.target.value}:x))}/><button onClick={()=>save(c)} style={{color:C.green,fontWeight:700}}>OK</button></>
@@ -1129,6 +1136,11 @@ function Main({cu,setCu,onLogout}){
           }
         </div>
       ))}
+      {cats.length>PREVIEW&&(
+        <button onClick={()=>setShowAll(s=>({...s,[allKey]:!s[allKey]}))} style={{width:"100%",fontSize:11,padding:"6px",marginTop:4,marginBottom:8,background:"transparent",color:C.muted,border:"1px dashed "+C.border,borderRadius:6}}>
+          {showAll[allKey]?"▲ Réduire":`▼ Voir tous (${cats.length})`}
+        </button>
+      )}
       {isAdmin&&<AddCatForm onAdd={add}/>}
     </>;
   }
@@ -1163,12 +1175,13 @@ function Main({cu,setCu,onLogout}){
       setPMs(ps=>ps.filter(x=>x.id!==id));
       if(p) log("items","pm_delete",`a supprimé la PM <b>${p.nom}</b>`);
     }
+    const visible = showAll.pms ? pms : pms.slice(0,PREVIEW);
     return <>
       <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
         <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
         {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
       </div>
-      {pms.map(p=>(
+      {visible.map(p=>(
         <div key={p.id} style={S.row}>
           {isAdmin&&ePM===p.id
             ?<><input style={{flex:1}} value={p.nom} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,nom:e.target.value}:x))}/><select value={p.categorie_id} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,categorie_id:e.target.value}:x))}>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select><button onClick={()=>save(p)} style={{color:C.green,fontWeight:700}}>OK</button></>
@@ -1176,6 +1189,11 @@ function Main({cu,setCu,onLogout}){
           }
         </div>
       ))}
+      {pms.length>PREVIEW&&(
+        <button onClick={()=>setShowAll(s=>({...s,pms:!s.pms}))} style={{width:"100%",fontSize:11,padding:"6px",marginTop:4,background:"transparent",color:C.muted,border:"1px dashed "+C.border,borderRadius:6}}>
+          {showAll.pms?"▲ Réduire":`▼ Voir tous (${pms.length})`}
+        </button>
+      )}
       {/* Ajout autorisé pour TOUS (admin et membre) — composant stable hors de Main */}
       <AddPMForm catsPM={catsPM} onAdd={add} isAdmin={isAdmin}/>
     </>;
@@ -1211,8 +1229,9 @@ function Main({cu,setCu,onLogout}){
       setGangs(ps=>ps.filter(x=>x.id!==id));
       if(p) log("items","gang_delete",`a supprimé le gang <b>${p.nom}</b>`);
     }
+    const visible = showAll.gangs ? gangs : gangs.slice(0,PREVIEW);
     return <>
-      {gangs.map(p=>(
+      {visible.map(p=>(
         <div key={p.id} style={S.row}>
           {isAdmin&&eGa===p.id
             ?<><input style={{flex:1}} value={p.nom} onChange={e=>setGangs(ps=>ps.map(x=>x.id===p.id?{...x,nom:e.target.value}:x))}/><select value={p.categorie_id} onChange={e=>setGangs(ps=>ps.map(x=>x.id===p.id?{...x,categorie_id:e.target.value}:x))}>{catsGang.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select><button onClick={()=>save(p)} style={{color:C.green,fontWeight:700}}>OK</button></>
@@ -1220,6 +1239,11 @@ function Main({cu,setCu,onLogout}){
           }
         </div>
       ))}
+      {gangs.length>PREVIEW&&(
+        <button onClick={()=>setShowAll(s=>({...s,gangs:!s.gangs}))} style={{width:"100%",fontSize:11,padding:"6px",marginTop:4,background:"transparent",color:C.muted,border:"1px dashed "+C.border,borderRadius:6}}>
+          {showAll.gangs?"▲ Réduire":`▼ Voir tous (${gangs.length})`}
+        </button>
+      )}
       {isAdmin&&<AddGangForm catsGang={catsGang} onAdd={add}/>}
     </>;
   }
@@ -1496,7 +1520,10 @@ function Main({cu,setCu,onLogout}){
       )}
 
       <div data-mobile="header" style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.2rem"}}>
-        <h2 style={{fontSize:19,fontWeight:700,margin:0}}>Compta Covenant</h2>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <img src="/SClogo.png" alt="Silent Covenant" style={{width:32,height:32,objectFit:"contain",flexShrink:0}}/>
+          <h2 style={{fontSize:19,fontWeight:700,margin:0}}>Compta Covenant</h2>
+        </div>
         <div data-mobile="header-right" style={{display:"flex",alignItems:"center",gap:8}}><RoleBadge role={cu.role}/><span style={{fontSize:13,color:C.muted}}>{cu.nom}</span><button onClick={onLogout} style={{fontSize:12,color:C.red,padding:"4px 10px"}}>Déconnexion</button></div>
       </div>
       <div style={{display:"flex",borderBottom:"1px solid "+C.border,marginBottom:"1.5rem",overflowX:"auto",gap:2}}>
@@ -1523,23 +1550,15 @@ function Main({cu,setCu,onLogout}){
               <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Total comptes</div>
               <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:C.green}}>{fmt(totMem)}</div>
             </div>
-            {/* Stock apparts : chiffre en gros + barre de progression */}
+            {/* Stock apparts : chiffre cohérent avec les autres + barre Bar (même rendu que coffres apparts) */}
             <div style={card}>
               <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Stock apparts</div>
-              <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-                <span style={{fontSize:22,fontWeight:700,lineHeight:1,color:stockColor}}>{fmtKg(totSU)}</span>
+              <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:18,fontWeight:700,lineHeight:1.2,color:stockColor}}>{fmtKg(totSU)}</span>
                 <span style={{fontSize:12,fontWeight:500,color:C.muted}}>/ {fmtKg(totSM)}</span>
                 {stockPct>=90&&<span style={{fontSize:13,color:stockColor,fontWeight:700}}>⚠</span>}
               </div>
-              <div style={{height:6,background:C.surfaceAlt,borderRadius:3,overflow:"hidden",border:"1px solid "+C.border}}>
-                <div style={{
-                  width:Math.min(100,stockPct)+"%",
-                  height:"100%",
-                  background:stockColor,
-                  transition:"width .3s ease, background .3s ease",
-                  borderRadius:3
-                }}/>
-              </div>
+              <Bar val={totSU} max={totSM}/>
             </div>
           </div>
 
