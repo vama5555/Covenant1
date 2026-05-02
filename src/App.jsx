@@ -16,8 +16,15 @@ const fmt   = n => Math.round(+n||0).toLocaleString("fr-FR")+"$";
 const fmtKg = n => Math.round(+n||0)+" Kg";
 const fmtKgD = n => (Math.round((+n||0)*100)/100).toFixed(2)+" Kg";
 const pv    = (v,max) => Math.min(100,Math.round((v/Math.max(1,max))*100));
-const today = () => new Date().toISOString().slice(0,10);
-const ago   = n => { const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); };
+// Helpers de date — utilisent la date LOCALE (pas UTC) pour éviter les décalages de fuseau horaire
+const _toLocalDate = d => {
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+};
+const today = () => _toLocalDate(new Date());
+const ago   = n => { const d=new Date(); d.setDate(d.getDate()-n); return _toLocalDate(d); };
 
 const blDuration = m => m<=99000?1:m<=199000?2:3;
 const fmtTime = d => d.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
@@ -1952,42 +1959,28 @@ function Main({cu,setCu,onLogout}){
 function StatsView({history,blanchHistory,setTab,setHFil,setHFrom,setHTo}){
   const [period,setPeriod]=useState("7"); // "today" | "7" | "30" | "total"
 
-  // Calcul de la date de début selon la période
-  const fromDate=useMemo(()=>{
-    if(period==="total")return null;
-    const d=new Date();
-    if(period==="today"){
-      d.setHours(0,0,0,0);
-    } else {
-      d.setDate(d.getDate()-parseInt(period,10));
-    }
-    return d;
+  // Calcul de la plage de dates LOCALES selon la période
+  const periodRange=useMemo(()=>{
+    const todayStr=today();
+    if(period==="total")return {from:null,to:todayStr};
+    if(period==="today")return {from:todayStr,to:todayStr};
+    return {from:ago(parseInt(period,10)),to:todayStr};
   },[period]);
 
   // Drilldown : clic sur une PM/Gang → bascule vers Historique avec filtres pré-remplis
   function goToHistory(dest, nom){
     if(!setTab)return;
-    // Convertir la période Stats en plage de dates pour Historique
-    let fromStr, toStr=today();
-    if(period==="total"){
-      fromStr=ago(3650); // ~10 ans = "depuis le début"
-    } else if(period==="today"){
-      fromStr=today();
-    } else {
-      fromStr=ago(parseInt(period,10));
-    }
-    setHFrom(fromStr);
-    setHTo(toStr);
+    setHFrom(periodRange.from||ago(3650));
+    setHTo(periodRange.to);
     setHFil({who:dest+":"+nom});
     setTab("historique");
   }
 
-  // Filtrer transactions sur la période
+  // Filtrer transactions sur la période (basé sur le champ `date` qui est en local)
   const txInPeriod=useMemo(()=>{
-    if(!fromDate)return history;
-    const fromStr=fromDate.toISOString().slice(0,10);
-    return history.filter(h=>h.date>=fromStr);
-  },[history,fromDate]);
+    if(!periodRange.from)return history;
+    return history.filter(h=>h.date>=periodRange.from && h.date<=periodRange.to);
+  },[history,periodRange]);
 
   // Calcul total payé aux PM (uniquement dest=pm)
   const totPaye=useMemo(()=>{
@@ -2047,9 +2040,15 @@ function StatsView({history,blanchHistory,setTab,setHFil,setHFrom,setHTo}){
 
   // Total blanchi sur la période
   const blanchInPeriod=useMemo(()=>{
-    if(!fromDate)return blanchHistory;
-    return blanchHistory.filter(b=>new Date(b.recup_at).getTime()>=fromDate.getTime());
-  },[blanchHistory,fromDate]);
+    if(!periodRange.from)return blanchHistory;
+    // periodRange.from est une string YYYY-MM-DD locale → on la convertit en début de journée local
+    const fromTs=new Date(periodRange.from+"T00:00:00").getTime();
+    const toTs=new Date(periodRange.to+"T23:59:59").getTime();
+    return blanchHistory.filter(b=>{
+      const t=new Date(b.recup_at).getTime();
+      return t>=fromTs && t<=toTs;
+    });
+  },[blanchHistory,periodRange]);
   const totBlanch=blanchInPeriod.reduce((s,b)=>s+(+b.montant||0),0);
   const cycleCount=blanchInPeriod.length;
   const avgDur=cycleCount>0?Math.round(blanchInPeriod.reduce((s,b)=>s+(+b.duree_h||0),0)/cycleCount):0;
