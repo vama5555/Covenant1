@@ -37,10 +37,41 @@ const fmtRem = ms => {
   return s+"s restantes";
 };
 
-const C={bg:"#2a2a2a",surface:"#333",surfaceAlt:"#3d3d3d",border:"#505050",text:"#f0f0f0",muted:"#a0a0a0",green:"#3dbf8f",red:"#e05555",amber:"#d4920a",blue:"#5aaee8"};
-const card={background:C.surface,border:"1px solid "+C.border,borderRadius:12,padding:"16px 18px",boxShadow:"0 2px 10px rgba(0,0,0,0.25)"};
+const C={
+  // Surfaces
+  bg:        "#1f1f1f",   // fond global
+  surface:   "#2a2a2a",   // cartes / cellules / inputs élevés
+  surfaceAlt:"#252525",   // alternative légèrement plus foncée
+  border:    "#3a3a3a",   // bordures, séparateurs
+  borderSoft:"#323232",   // séparateurs internes plus discrets
+  // Texte
+  text:      "#ededed",   // texte principal
+  muted:     "#a8a8a8",   // texte secondaire, labels
+  dim:       "#6a6a6a",   // texte tertiaire, placeholders
+  // Sémantique
+  green:     "#7fb86b",   // OK / sain / argent propre
+  red:       "#df5a44",   // danger / argent sale / coffres
+  amber:     "#e3b94a",   // or — accent principal
+  amberBright:"#f0c95c",  // hover de l'or
+  blue:      "#7c9ed1",   // info, infos secondaires (toned down)
+  // Alias historiques pour compat (mapping vers nouveaux tokens)
+  accent:    "#e3b94a",
+};
+const card={background:C.surface,border:"1px solid "+C.border,borderRadius:8,padding:"16px 18px"};
 const S={card,inp:{width:"100%"},lbl:{fontSize:11,color:C.muted,marginBottom:3,fontWeight:500},sec:{fontSize:10,fontWeight:700,color:C.muted,margin:"0 0 14px",textTransform:"uppercase",letterSpacing:"0.12em"},row:{display:"flex",alignItems:"center",gap:8,marginBottom:8}};
-const G=`*{box-sizing:border-box;}@keyframes cv-spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}@keyframes cv-pulse{0%,100%{opacity:0.4;}50%{opacity:1;}}select,input{background:#3a3a3a!important;border:1px solid #585858!important;border-radius:8px!important;padding:7px 11px!important;font-size:13px!important;color:#f0f0f0!important;outline:none!important;box-shadow:inset 0 1px 4px rgba(0,0,0,0.25)!important;font-family:inherit;transition:border-color .15s;}select{-webkit-appearance:auto!important;appearance:auto!important;cursor:pointer;}select:focus,input:focus{border-color:#888!important;}select option{background:#3a3a3a!important;color:#f0f0f0!important;}input::placeholder{color:#686868!important;}button{background:#3a3a3a;border:1px solid #585858;border-radius:8px;padding:5px 12px;font-size:13px;color:#f0f0f0;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.25);transition:background .12s,transform .08s;white-space:nowrap;flex-shrink:0;}button:hover{background:#484848;}button:active{transform:scale(0.97);}div,span,p,h1,h2,h3,label{color:inherit;}
+const G=`*{box-sizing:border-box;}
+@keyframes cv-spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
+@keyframes cv-pulse{0%,100%{opacity:0.4;}50%{opacity:1;}}
+body{font-feature-settings:'tnum';font-variant-numeric:tabular-nums;}
+select,input{background:#252525!important;border:1px solid #3a3a3a!important;border-radius:6px!important;padding:7px 11px!important;font-size:13px!important;color:#ededed!important;outline:none!important;box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)!important;font-family:inherit;transition:border-color .15s;}
+select{-webkit-appearance:auto!important;appearance:auto!important;cursor:pointer;}
+select:focus,input:focus{border-color:#e3b94a!important;}
+select option{background:#252525!important;color:#ededed!important;}
+input::placeholder{color:#6a6a6a!important;}
+button{background:#2a2a2a;border:1px solid #3a3a3a;border-radius:6px;padding:5px 12px;font-size:13px;color:#ededed;cursor:pointer;transition:background .12s,border-color .12s,transform .08s;white-space:nowrap;flex-shrink:0;font-family:inherit;}
+button:hover{background:#333;border-color:#4a4a4a;}
+button:active{transform:scale(0.97);}
+div,span,p,h1,h2,h3,label{color:inherit;}
 /* ── Responsive mobile (≤ 700px) ── */
 @media (max-width:700px){
   /* Padding réduit du conteneur principal */
@@ -172,7 +203,7 @@ function Login({onLogin}){
       <div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Code d'accès</div>
       <input type="password" placeholder="• • • • • •" value={code} onChange={e=>setCode(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} style={{width:"100%",marginBottom:err?8:14,fontSize:20,letterSpacing:"0.35em",textAlign:"center"}}/>
       {err&&<div style={{fontSize:12,color:C.red,marginBottom:12,fontWeight:500,textAlign:"center"}}>{err}</div>}
-      <button onClick={go} disabled={loading||usersLoading} style={{width:"100%",padding:"11px",fontWeight:700,fontSize:14,background:"#585858",color:C.text,border:"1px solid #686868",borderRadius:8,opacity:loading?0.7:1,cursor:loading?"wait":"pointer"}}>
+      <button onClick={go} disabled={loading||usersLoading} style={{width:"100%",padding:"11px",fontWeight:700,fontSize:14,background:loading?"#585858":C.amber,color:loading?C.text:"#1a1a1a",border:"1px solid "+(loading?"#686868":C.amber),borderRadius:6,opacity:loading?0.7:1,cursor:loading?"wait":"pointer",transition:"background .2s"}}>
         {loading?<><span style={{display:"inline-block",width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTop:"2px solid #fff",borderRadius:"50%",animation:"cv-spin 0.6s linear infinite",verticalAlign:"middle",marginRight:8}}/>Connexion...</>:"Connexion"}
       </button>
     </div>
@@ -305,7 +336,7 @@ function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
 }
 
 // ── Carte d'un compte membre avec save sur blur / Entrée ──
-function MemberCard({m,low,setMembers,onLog}){
+function MemberCard({m,low,setMembers,onLog,dense,idx,total}){
   const [val,setVal]=useState(String(m.solde));
   const [status,setStatus]=useState(null);
   const [dirty,setDirty]=useState(false);
@@ -332,13 +363,49 @@ function MemberCard({m,low,setMembers,onLog}){
     if(onLog) onLog("money","balance_update",`a modifié le solde de <b>${m.nom}</b> : ${`<b>${fmt(before)}</b> → <b>${fmt(s)}</b>`}`);
   }
 
+  // Mode dense : cellule de tableau (sans border-radius, bordures fines)
+  if(dense){
+    // Calcul des bordures pour effet "tableau" (pas de bordure right sur la dernière colonne, pas de bottom sur la dernière ligne)
+    const colsPerRow = 6;
+    const isLastInRow = (idx+1) % colsPerRow === 0;
+    const isLastRow = idx >= Math.floor((total-1)/colsPerRow)*colsPerRow;
+    return (
+      <div style={{
+        background:low?"rgba(223,90,68,0.06)":"transparent",
+        borderRight:isLastInRow?"none":"1px solid "+C.border,
+        borderBottom:isLastRow?"none":"1px solid "+C.border,
+        padding:"12px 14px",
+        transition:"background .2s"
+      }}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+          <span style={{fontSize:10,fontWeight:700,color:low?C.red:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>{m.nom}</span>
+          {status==="saving"&&<span style={{fontSize:8,color:C.blue,fontWeight:600}}>•••</span>}
+          {status==="saved"&&<span style={{fontSize:8,color:C.green,fontWeight:600}}>✓</span>}
+          {status==="error"&&<span style={{fontSize:8,color:C.red,fontWeight:600}}>⚠</span>}
+          {dirty&&!status&&<span style={{fontSize:8,color:C.amber,fontWeight:600}}>•</span>}
+        </div>
+        <div style={{display:"flex",alignItems:"baseline",gap:3}}>
+          <input
+            type="number"
+            value={val}
+            onChange={e=>{setVal(e.target.value);setDirty(true);}}
+            onBlur={save}
+            onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();}}}
+            style={{flex:1,fontSize:18,fontWeight:700,border:"none!important",background:"transparent!important",color:low?C.red:C.text,padding:"0!important",minWidth:0,boxShadow:"none!important"}}
+          />
+          <span style={{fontSize:11,color:C.dim,fontWeight:500}}>$</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Mode classique (card avec border)
   return (
     <div style={{
-      background:low?"rgba(224,85,85,0.08)":C.surface,
-      border:"1px solid "+(low?"rgba(224,85,85,0.4)":dirty?"rgba(90,174,232,0.5)":C.border),
-      borderRadius:12,
+      background:low?"rgba(223,90,68,0.06)":C.surface,
+      border:"1px solid "+(low?"rgba(223,90,68,0.4)":dirty?"rgba(124,158,209,0.5)":C.border),
+      borderRadius:8,
       padding:"14px 16px",
-      boxShadow:"0 2px 10px rgba(0,0,0,0.25)",
       transition:"all .25s"
     }}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -1095,7 +1162,7 @@ function Main({cu,setCu,onLogout}){
   const TABS=isAdmin?[...TABS_BASE,{id:"bigbrother",label:"👁 Bigbrother",admin:true}]:TABS_BASE;
   const ns=id=>{
     const isBB=id==="bigbrother";
-    return {padding:"10px 15px",fontSize:13,fontWeight:tab===id?600:400,color:tab===id?(isBB?C.red:C.text):(isBB?"rgba(224,85,85,0.7)":C.muted),borderBottom:tab===id?"2px solid "+(isBB?C.red:C.text):"2px solid transparent",background:"none",border:"none",cursor:"pointer",borderRadius:0,whiteSpace:"nowrap",boxShadow:"none"};
+    return {padding:"10px 15px",fontSize:13,fontWeight:tab===id?600:400,color:tab===id?(isBB?C.red:C.text):(isBB?"rgba(223,90,68,0.7)":C.muted),borderBottom:tab===id?"2px solid "+(isBB?C.red:C.amber):"2px solid transparent",background:"none",border:"none",cursor:"pointer",borderRadius:0,whiteSpace:"nowrap",boxShadow:"none"};
   };
 
   function CatTable({cats,setCats,table,eId,setEId,nc,setNc}){
@@ -1180,7 +1247,7 @@ function Main({cu,setCu,onLogout}){
     return <>
       <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
         <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
-        {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
+        {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
       </div>
       {visible.map(p=>(
         <div key={p.id} style={S.row}>
@@ -1289,7 +1356,7 @@ function Main({cu,setCu,onLogout}){
         <span style={{fontSize:11,color:C.muted}}>{visibleCount} visible{visibleCount>1?"s":""} / {items.length} total</span>
         <div style={{display:"flex",gap:6}}>
           <button onClick={()=>exportCSV(target)} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
-          {canEdit&&<button onClick={()=>triggerImport(target)} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
+          {canEdit&&<button onClick={()=>triggerImport(target)} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
         </div>
       </div>
 
@@ -1540,26 +1607,44 @@ function Main({cu,setCu,onLogout}){
                         : C.text;                     /* normal */
         return (
         <div>
-          <div data-mobile="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:16}}>
+          {/* KPI dashboard : style "tableau dense" — cellules collées avec souligné amber sous les titres */}
+          <div data-mobile="stats-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:0,marginBottom:24,border:"1px solid "+C.border,borderRadius:8,overflow:"hidden",background:C.surface}}>
             {/* Total coffres : ROUGE (argent sale) */}
-            <div style={card}>
-              <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Total coffres</div>
-              <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:C.red}}>{fmt(totCoffres)}</div>
+            <div style={{padding:"16px 20px",borderRight:"1px solid "+C.border}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em"}}>Total coffres</span>
+                <span style={{flex:1,height:1,background:C.borderSoft}}/>
+              </div>
+              <div style={{display:"flex",alignItems:"baseline",gap:4,lineHeight:1.1}}>
+                <span style={{fontSize:30,fontWeight:700,color:C.red,wordBreak:"break-word"}}>{fmt(totCoffres).replace("$","")}</span>
+                <span style={{fontSize:14,color:C.dim,fontWeight:500}}>$</span>
+              </div>
             </div>
             {/* Total comptes : VERT (argent propre) */}
-            <div style={card}>
-              <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Total comptes</div>
-              <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:C.green}}>{fmt(totMem)}</div>
+            <div style={{padding:"16px 20px",borderRight:"1px solid "+C.border}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em"}}>Total comptes</span>
+                <span style={{flex:1,height:1,background:C.borderSoft}}/>
+              </div>
+              <div style={{display:"flex",alignItems:"baseline",gap:4,lineHeight:1.1}}>
+                <span style={{fontSize:30,fontWeight:700,color:C.green,wordBreak:"break-word"}}>{fmt(totMem).replace("$","")}</span>
+                <span style={{fontSize:14,color:C.dim,fontWeight:500}}>$</span>
+              </div>
             </div>
-            {/* Stock apparts : chiffre cohérent avec les autres + barre Bar (même rendu que coffres apparts) */}
-            <div style={card}>
-              <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Stock apparts</div>
-              <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:8,flexWrap:"wrap"}}>
-                <span style={{fontSize:18,fontWeight:700,lineHeight:1.2,color:stockColor}}>{fmtKg(totSU)}</span>
-                <span style={{fontSize:12,fontWeight:500,color:C.muted}}>/ {fmtKg(totSM)}</span>
+            {/* Stock apparts : underline AMBER sous le titre + chiffre + barre underline */}
+            <div style={{padding:"16px 20px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em"}}>Stock apparts</span>
+                <span style={{flex:1,height:1,background:C.borderSoft}}/>
+              </div>
+              <div style={{display:"flex",alignItems:"baseline",gap:6,lineHeight:1.1,marginBottom:8}}>
+                <span style={{fontSize:30,fontWeight:700,color:stockColor}}>{Math.round(totSU).toLocaleString("fr-FR")}</span>
+                <span style={{fontSize:14,color:C.dim,fontWeight:500}}>/ {Math.round(totSM).toLocaleString("fr-FR")} Kg</span>
                 {stockPct>=90&&<span style={{fontSize:13,color:stockColor,fontWeight:700}}>⚠</span>}
               </div>
-              <Bar val={totSU} max={totSM}/>
+              <div style={{height:2,background:C.borderSoft,borderRadius:1,overflow:"hidden"}}>
+                <div style={{width:Math.min(100,stockPct)+"%",height:"100%",background:C.amber,transition:"width .3s"}}/>
+              </div>
             </div>
           </div>
 
@@ -1583,7 +1668,7 @@ function Main({cu,setCu,onLogout}){
                     <div style={S.lbl}>Montant à blanchir ($)</div>
                     <input type="number" min="1" placeholder="ex: 75000" value={blAmount} onChange={e=>setBlAmount(e.target.value)} onKeyDown={e=>e.key==="Enter"&&startBlanch()} style={{width:"100%"}}/>
                   </div>
-                  <button onClick={startBlanch} disabled={blPreviewAmount<=0} style={{padding:"8px 22px",fontWeight:700,background:blPreviewAmount>0?C.amber:"#3a3a3a",color:blPreviewAmount>0?"#1a1a1a":C.muted,border:"none"}}>Démarrer</button>
+                  <button onClick={startBlanch} disabled={blPreviewAmount<=0} style={{padding:"10px 26px",fontWeight:700,fontSize:13,letterSpacing:"0.05em",textTransform:"uppercase",background:blPreviewAmount>0?C.amber:"#3a3a3a",color:blPreviewAmount>0?"#1a1a1a":C.muted,border:"none",borderRadius:6,transition:"background .2s"}} onMouseEnter={e=>{if(blPreviewAmount>0)e.currentTarget.style.background=C.amberBright;}} onMouseLeave={e=>{if(blPreviewAmount>0)e.currentTarget.style.background=C.amber;}}>Démarrer</button>
                 </div>
                 <div style={{marginTop:8,fontSize:12,color:C.muted}}>
                   {blPreviewAmount<=0?"Saisis un montant pour voir la durée estimée."
@@ -1622,12 +1707,15 @@ function Main({cu,setCu,onLogout}){
             )}
           </div>
 
-          {/* COMPTES MEMBRES — police plus grosse + alerte rouge si solde < seuil */}
-          <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",margin:"18px 0 10px"}}>Comptes membres</div>
-          <div data-mobile="members-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:10}}>
-            {members.map(m=>{
+          {/* COMPTES MEMBRES — style "tableau dense" : cellules collées avec bordures fines */}
+          <div style={{display:"flex",alignItems:"center",gap:8,margin:"24px 0 10px"}}>
+            <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em"}}>Comptes membres</span>
+            <span style={{fontSize:10,color:C.dim}}>· {members.length}</span>
+          </div>
+          <div data-mobile="members-grid" style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:0,border:"1px solid "+C.border,borderRadius:8,overflow:"hidden",background:C.surface}}>
+            {members.map((m,i)=>{
               const low=m.solde<alertThreshold;
-              return <MemberCard key={m.id} m={m} low={low} setMembers={setMembers} onLog={log}/>;
+              return <MemberCard key={m.id} m={m} low={low} setMembers={setMembers} onLog={log} dense={true} idx={i} total={members.length}/>;
             })}
           </div>
         </div>
@@ -1690,7 +1778,7 @@ function Main({cu,setCu,onLogout}){
                 </>}
               </div>
             </div>
-            <button onClick={submit} style={{padding:"10px 22px",fontWeight:700,fontSize:14,background:C.text,color:C.bg,border:"none",borderRadius:9,flexShrink:0}}>Enregistrer</button>
+            <button onClick={submit} style={{padding:"10px 22px",fontWeight:700,fontSize:14,background:C.amber,color:"#1a1a1a",border:"none",borderRadius:6,flexShrink:0,transition:"background .2s"}} onMouseEnter={e=>e.currentTarget.style.background=C.amberBright} onMouseLeave={e=>e.currentTarget.style.background=C.amber}>Enregistrer</button>
           </div>
         </div>
       )}
@@ -1938,7 +2026,7 @@ function Main({cu,setCu,onLogout}){
                 <div><div style={S.lbl}>Code actuel</div><input type="password" style={S.inp} value={pwd.cur} onChange={e=>setPwd(f=>({...f,cur:e.target.value}))}/></div>
                 <div><div style={S.lbl}>Nouveau code</div><input type="password" style={S.inp} value={pwd.neu} onChange={e=>setPwd(f=>({...f,neu:e.target.value}))}/></div>
                 <div><div style={S.lbl}>Confirmer</div><input type="password" style={S.inp} value={pwd.conf} onChange={e=>setPwd(f=>({...f,conf:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&changePwd()}/></div>
-                <button onClick={changePwd} style={{fontWeight:700,background:C.blue,color:"#1a1a1a",border:"none",padding:"8px 14px",marginTop:4}}>Modifier</button>
+                <button onClick={changePwd} style={{fontWeight:700,background:C.amber,color:"#1a1a1a",border:"none",padding:"8px 14px",marginTop:4}}>Modifier</button>
               </div>
               {pwdMsg&&<div style={{marginTop:10,fontSize:12,fontWeight:600,color:pwdMsg.t==="ok"?C.green:C.red}}>{pwdMsg.m}</div>}
             </div>
@@ -1953,7 +2041,7 @@ function Main({cu,setCu,onLogout}){
                     <input type="number" min="0" style={S.inp} value={thresholdInput} onChange={e=>setThresholdInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveThreshold()}/>
                     <div style={{fontSize:11,color:C.muted,marginTop:5}}>En-dessous de ce seuil, le compte membre s'affiche en rouge sur le tableau de bord.</div>
                   </div>
-                  <button onClick={saveThreshold} style={{fontWeight:700,background:C.blue,color:"#1a1a1a",border:"none",padding:"8px 14px",marginTop:4}}>Sauvegarder</button>
+                  <button onClick={saveThreshold} style={{fontWeight:700,background:C.amber,color:"#1a1a1a",border:"none",padding:"8px 14px",marginTop:4}}>Sauvegarder</button>
                 </div>
                 {thresholdMsg&&<div style={{marginTop:10,fontSize:12,fontWeight:600,color:thresholdMsg.t==="ok"?C.green:C.red}}>{thresholdMsg.m}</div>}
               </div>
@@ -1967,7 +2055,7 @@ function Main({cu,setCu,onLogout}){
                 <div style={{...S.sec,color:C.amber,margin:0}}>Gestion des accès — admin uniquement</div>
                 <div style={{display:"flex",gap:6}}>
                   <button onClick={()=>exportCSV("users")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
-                  <button onClick={()=>triggerImport("users")} style={{fontSize:11,padding:"4px 10px",background:C.blue,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>
+                  <button onClick={()=>triggerImport("users")} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>
                 </div>
               </div>
               {users.map(u=>(
