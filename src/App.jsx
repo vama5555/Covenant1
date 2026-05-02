@@ -75,7 +75,8 @@ const G=`*{box-sizing:border-box;}@keyframes cv-spin{0%{transform:rotate(0deg);}
   /* Stats cartes en haut du dashboard : 2 par ligne au lieu de 3 */
   [data-mobile="stats-grid"]{grid-template-columns:1fr 1fr!important;}
   /* Apparts vue grille : 1 colonne */
-  [data-mobile="apparts-grid"]{grid-template-columns:1fr!important;}
+  /* Apparts vue grille : 3 colonnes desktop, 2 sur tablette, 1 sur mobile */
+  [data-mobile="apparts-grid"]{grid-template-columns:1fr 1fr!important;}
   /* Bigbrother filtres : 2x2 puis wrap */
   [data-mobile="bb-filters"]{grid-template-columns:1fr 1fr!important;gap:6px!important;}
   [data-mobile="bb-filters"]>div>div{font-size:9px!important;margin-bottom:2px!important;}
@@ -89,7 +90,7 @@ const G=`*{box-sizing:border-box;}@keyframes cv-spin{0%{transform:rotate(0deg);}
 }
 @media (max-width:420px){
   /* Très petits écrans : tout en 1 colonne, sauf bb-filters qui reste en 2x2 */
-  [data-mobile="grid-4"],[data-mobile="grid-3"],[data-mobile="grid-2"],[data-mobile="tx-form-top"]{grid-template-columns:1fr!important;}
+  [data-mobile="grid-4"],[data-mobile="grid-3"],[data-mobile="grid-2"],[data-mobile="tx-form-top"],[data-mobile="apparts-grid"]{grid-template-columns:1fr!important;}
   [data-mobile="stats-grid"]{grid-template-columns:1fr!important;}
   [data-mobile="members-grid"]{grid-template-columns:1fr!important;}
 }`;
@@ -408,21 +409,19 @@ function AppartCard({a,updateAppart,copied,setCopied}){
   };
 
   return (
-    <div style={{...card,borderLeft:"3px solid "+ac.color,padding:"12px 14px"}}>
+    <div style={{...card,borderLeft:"3px solid "+ac.color,padding:"10px 12px"}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-        <span style={{flex:"0 0 38%",fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.nom}</span>
+        <span style={{flex:"0 1 auto",fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,maxWidth:"40%"}}>{a.nom}</span>
+        <span style={{flexShrink:0,fontSize:9,padding:"2px 7px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span>
         {a.code?(
           <button onClick={()=>{navigator.clipboard?.writeText(a.code);setCopied(a.id);setTimeout(()=>setCopied(null),1500);}}
-            style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,padding:"3px 10px",background:C.surfaceAlt,border:"1px solid "+(copied===a.id?C.green:C.border),borderRadius:6,color:copied===a.id?C.green:C.muted,transition:"all .2s",minWidth:0}}>
-            <span style={{fontFamily:"monospace",fontSize:12,color:copied===a.id?C.green:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.code}</span>
-            <span style={{fontSize:11,flexShrink:0}}>{copied===a.id?"✓":"⧉"}</span>
+            style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+(copied===a.id?C.green:C.border),borderRadius:6,color:copied===a.id?C.green:C.muted,transition:"all .2s",minWidth:0}}>
+            <span style={{fontFamily:"monospace",fontSize:11,color:copied===a.id?C.green:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.code}</span>
+            <span style={{fontSize:10,flexShrink:0}}>{copied===a.id?"✓":"⧉"}</span>
           </button>
         ):(
-          <div style={{flex:1,padding:"3px 10px",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,fontSize:11,color:C.muted,fontStyle:"italic"}}>pas de code</div>
+          <div style={{flex:1,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,fontSize:10,color:C.muted,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>pas de code</div>
         )}
-      </div>
-      <div style={{marginBottom:8}}>
-        <span style={{fontSize:10,padding:"2px 8px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         <div>
@@ -1771,7 +1770,7 @@ function Main({cu,setCu,onLogout}){
             </div>
           </div>
           {!isAdmin&&<div style={{fontSize:11,color:C.muted,marginBottom:10,fontStyle:"italic"}}>💡 Tu peux modifier le coffre et le stock. Pour le reste (nom, catégorie, code, ajout), va dans Database (admin).</div>}
-          <div data-mobile="apparts-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div data-mobile="apparts-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
             {sortedAp.map(a=>(
               <AppartCard key={a.id} a={a} updateAppart={updateAppart} copied={copied} setCopied={setCopied}/>
             ))}
@@ -1786,12 +1785,21 @@ function Main({cu,setCu,onLogout}){
 
       {tab==="database"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <div style={card}><div style={S.sec}>Catégories PM</div><CatTable cats={catsPM} setCats={setCatsPM} table="categories_pm" eId={eCPM} setEId={setECPM} nc={nCPM} setNc={setNCPM}/></div>
-          <div style={card}><div style={S.sec}>Petites mains</div><PMList/></div>
-          <div style={card}><div style={S.sec}>Catégories gangs</div><CatTable cats={catsGang} setCats={setCatsGang} table="categories_gang" eId={eCG} setEId={setECG} nc={nCG} setNc={setNCG}/></div>
-          <div style={card}><div style={S.sec}>Gangs{!isAdmin&&" · lecture seule"}</div><GangList/></div>
-          <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm" allKey="itemsPM"/></div>
-          <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="items_gang" allKey="itemsG"/></div>
+          {/* Ligne 1 : Catégories PM + Petites mains */}
+          <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            <div style={card}><div style={S.sec}>Catégories PM</div><CatTable cats={catsPM} setCats={setCatsPM} table="categories_pm" eId={eCPM} setEId={setECPM} nc={nCPM} setNc={setNCPM}/></div>
+            <div style={card}><div style={S.sec}>Petites mains</div><PMList/></div>
+          </div>
+          {/* Ligne 2 : Catégories gangs + Gangs */}
+          <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            <div style={card}><div style={S.sec}>Catégories gangs</div><CatTable cats={catsGang} setCats={setCatsGang} table="categories_gang" eId={eCG} setEId={setECG} nc={nCG} setNc={setNCG}/></div>
+            <div style={card}><div style={S.sec}>Gangs{!isAdmin&&" · lecture seule"}</div><GangList/></div>
+          </div>
+          {/* Ligne 3 : Items PM + Items gangs */}
+          <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm" allKey="itemsPM"/></div>
+            <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="items_gang" allKey="itemsG"/></div>
+          </div>
 
           {isAdmin&&(
             <div style={card}>
@@ -1889,33 +1897,37 @@ function Main({cu,setCu,onLogout}){
 
       {tab==="parametres"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <div style={card}>
-            <div style={S.sec}>Mon mot de passe</div>
-            <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Connecté en tant que <strong style={{color:C.text}}>{cu.nom}</strong></div>
-            <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:10,alignItems:"end"}}>
-              <div><div style={S.lbl}>Code actuel</div><input type="password" style={S.inp} value={pwd.cur} onChange={e=>setPwd(f=>({...f,cur:e.target.value}))}/></div>
-              <div><div style={S.lbl}>Nouveau code</div><input type="password" style={S.inp} value={pwd.neu} onChange={e=>setPwd(f=>({...f,neu:e.target.value}))}/></div>
-              <div><div style={S.lbl}>Confirmer</div><input type="password" style={S.inp} value={pwd.conf} onChange={e=>setPwd(f=>({...f,conf:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&changePwd()}/></div>
-              <button onClick={changePwd} style={{fontWeight:700,background:C.blue,color:"#1a1a1a",border:"none"}}>Modifier</button>
-            </div>
-            {pwdMsg&&<div style={{marginTop:10,fontSize:12,fontWeight:600,color:pwdMsg.t==="ok"?C.green:C.red}}>{pwdMsg.m}</div>}
-          </div>
-
-          {/* Paramètres généraux — seuil d'alerte */}
-          {isAdmin&&(
+          {/* Layout 2 colonnes : Mon mot de passe + Seuil alerte */}
+          <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:isAdmin?"1fr 1fr":"1fr",gap:16}}>
             <div style={card}>
-              <div style={S.sec}>Paramètres généraux — admin uniquement</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"end"}}>
-                <div>
-                  <div style={S.lbl}>Seuil d'alerte solde compte ($)</div>
-                  <input type="number" min="0" style={S.inp} value={thresholdInput} onChange={e=>setThresholdInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveThreshold()}/>
-                  <div style={{fontSize:11,color:C.muted,marginTop:5}}>En-dessous de ce seuil, le compte membre s'affiche en rouge sur le tableau de bord.</div>
-                </div>
-                <button onClick={saveThreshold} style={{fontWeight:700,background:C.blue,color:"#1a1a1a",border:"none"}}>Sauvegarder</button>
+              <div style={S.sec}>Mon mot de passe</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Connecté en tant que <strong style={{color:C.text}}>{cu.nom}</strong></div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <div><div style={S.lbl}>Code actuel</div><input type="password" style={S.inp} value={pwd.cur} onChange={e=>setPwd(f=>({...f,cur:e.target.value}))}/></div>
+                <div><div style={S.lbl}>Nouveau code</div><input type="password" style={S.inp} value={pwd.neu} onChange={e=>setPwd(f=>({...f,neu:e.target.value}))}/></div>
+                <div><div style={S.lbl}>Confirmer</div><input type="password" style={S.inp} value={pwd.conf} onChange={e=>setPwd(f=>({...f,conf:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&changePwd()}/></div>
+                <button onClick={changePwd} style={{fontWeight:700,background:C.blue,color:"#1a1a1a",border:"none",padding:"8px 14px",marginTop:4}}>Modifier</button>
               </div>
-              {thresholdMsg&&<div style={{marginTop:10,fontSize:12,fontWeight:600,color:thresholdMsg.t==="ok"?C.green:C.red}}>{thresholdMsg.m}</div>}
+              {pwdMsg&&<div style={{marginTop:10,fontSize:12,fontWeight:600,color:pwdMsg.t==="ok"?C.green:C.red}}>{pwdMsg.m}</div>}
             </div>
-          )}
+
+            {/* Paramètres généraux — seuil d'alerte */}
+            {isAdmin&&(
+              <div style={card}>
+                <div style={S.sec}>Paramètres généraux — admin uniquement</div>
+                <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Configuration de l'application.</div>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <div>
+                    <div style={S.lbl}>Seuil d'alerte solde compte ($)</div>
+                    <input type="number" min="0" style={S.inp} value={thresholdInput} onChange={e=>setThresholdInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveThreshold()}/>
+                    <div style={{fontSize:11,color:C.muted,marginTop:5}}>En-dessous de ce seuil, le compte membre s'affiche en rouge sur le tableau de bord.</div>
+                  </div>
+                  <button onClick={saveThreshold} style={{fontWeight:700,background:C.blue,color:"#1a1a1a",border:"none",padding:"8px 14px",marginTop:4}}>Sauvegarder</button>
+                </div>
+                {thresholdMsg&&<div style={{marginTop:10,fontSize:12,fontWeight:600,color:thresholdMsg.t==="ok"?C.green:C.red}}>{thresholdMsg.m}</div>}
+              </div>
+            )}
+          </div>
 
           {/* Gestion des accès — admin only */}
           {isAdmin&&(
