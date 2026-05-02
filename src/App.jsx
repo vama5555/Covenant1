@@ -814,6 +814,35 @@ function Main({cu,setCu,onLogout}){
     return h.date>=hFrom&&h.date<=hTo;
   }),[history,hFil,hFrom,hTo]);
 
+  // Totaux sur les transactions filtrées (Historique)
+  const totauxH=useMemo(()=>{
+    let liasseQte=0, liasseFace=0, objQte=0, objRevente=0, payePM=0, sale=0;
+    filtH.forEach(h=>{
+      // Payé total
+      payePM += (+h.total||0);
+      // Objets : qte cumulée + valeur de revente (prix × qte)
+      if(h.types?.includes("objets")&&h.lignes){
+        h.lignes.forEach(l=>{
+          objQte += (+l.qte||0);
+          objRevente += (+l.prix||0)*(+l.qte||0);
+          sale += (+l.prix||0)*(+l.qte||0);
+        });
+      }
+      // Liasses : qte + valeur faciale
+      if(h.types?.includes("liasses")){
+        liasseQte += (+h.liasse_qte||0);
+        const face=(+h.valeur_face||((+h.liasse_qte||0)*70));
+        liasseFace += face;
+        sale += face;
+      }
+      // Argent sale brut
+      if(h.types?.includes("argent")){
+        sale += (+h.argent_sale||0);
+      }
+    });
+    return {liasseQte,liasseFace,objQte,objRevente,payePM:Math.round(payePM),sale:Math.round(sale)};
+  },[filtH]);
+
   const [apCatF,setApCatF]=useState("");
   const [apSort,setApSort]=useState({key:"",dir:-1});
   const sortedAp=useMemo(()=>{
@@ -1595,7 +1624,7 @@ function Main({cu,setCu,onLogout}){
             <div>
               <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:3}}>Total à payer</div>
               <div style={{display:"flex",alignItems:"baseline",gap:14,flexWrap:"wrap"}}>
-                <div style={{fontSize:26,fontWeight:700,color:C.red}}>{fmt(txTotal)}</div>
+                <div style={{fontSize:26,fontWeight:700,color:C.green}}>{fmt(txTotal)}</div>
                 {totPoids>0&&<>
                   <div style={{width:1,alignSelf:"stretch",background:C.border}}/>
                   <div style={{fontSize:16,fontWeight:600,color:C.blue}}>{fmtKgD(totPoids)}</div>
@@ -1609,16 +1638,57 @@ function Main({cu,setCu,onLogout}){
 
       {tab==="historique"&&(
         <div>
-          <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap",alignItems:"center"}}>
-            <select value={hFil.who} onChange={e=>setHFil(f=>({...f,who:e.target.value}))}>
+          <style>{`
+            .cv-stats-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#404040;border:1px solid #505050;border-radius:10px;overflow:hidden;margin-bottom:14px;}
+            .cv-stat-box{background:#2f2f2f;padding:10px 14px;display:flex;flex-direction:column;gap:3px;}
+            .cv-stat-label{font-size:9px;font-weight:600;color:#a0a0a0;text-transform:uppercase;letter-spacing:0.08em;}
+            .cv-stat-value{font-size:16px;font-weight:700;color:#f0f0f0;line-height:1.1;}
+            .cv-stat-sub{font-size:10px;color:#888;}
+            @media (max-width:700px){.cv-stats-strip{grid-template-columns:1fr 1fr;}.cv-stat-value{font-size:14px;}}
+            @media (max-width:420px){.cv-stats-strip{grid-template-columns:1fr;}}
+          `}</style>
+
+          {/* Filtres sur 1 seule ligne */}
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+            <select value={hFil.who} onChange={e=>setHFil(f=>({...f,who:e.target.value}))} style={{flex:"0 1 auto",minWidth:200}}>
               <option value="">Toutes les PM / gangs</option>
               {whoOpts.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:12,color:C.muted}}>Du</span>
+              <input type="date" value={hFrom} onChange={e=>setHFrom(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/>
+              <span style={{fontSize:12,color:C.muted}}>au</span>
+              <input type="date" value={hTo} onChange={e=>setHTo(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/>
+            </div>
+            <span style={{fontSize:11,color:C.muted,marginLeft:"auto"}}>{filtH.length} transaction{filtH.length!==1?"s":""}</span>
           </div>
-          <div style={{marginBottom:14,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-            <span style={{fontSize:12,color:C.muted}}>Du</span><input type="date" value={hFrom} onChange={e=>setHFrom(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/><span style={{fontSize:12,color:C.muted}}>au</span><input type="date" value={hTo} onChange={e=>setHTo(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/>
-          </div>
-          <div style={{fontSize:12,color:C.muted,marginBottom:12}}>{filtH.length} transaction{filtH.length!==1?"s":""}</div>
+
+          {/* Bande de stats */}
+          {filtH.length>0&&(
+            <div className="cv-stats-strip">
+              <div className="cv-stat-box">
+                <div className="cv-stat-label">Objets</div>
+                <div className="cv-stat-value">{totauxH.objQte}</div>
+                <div className="cv-stat-sub">{totauxH.objRevente>0?fmt(totauxH.objRevente)+" revente":"—"}</div>
+              </div>
+              <div className="cv-stat-box">
+                <div className="cv-stat-label">Liasses</div>
+                <div className="cv-stat-value">{totauxH.liasseQte}</div>
+                <div className="cv-stat-sub">{totauxH.liasseFace>0?fmt(totauxH.liasseFace)+" face":"—"}</div>
+              </div>
+              <div className="cv-stat-box">
+                <div className="cv-stat-label">Payé aux PM</div>
+                <div className="cv-stat-value" style={{color:C.green}}>{fmt(totauxH.payePM)}</div>
+                <div className="cv-stat-sub">en argent propre</div>
+              </div>
+              <div className="cv-stat-box">
+                <div className="cv-stat-label">Sale généré</div>
+                <div className="cv-stat-value" style={{color:C.red}}>{fmt(totauxH.sale)}</div>
+                <div className="cv-stat-sub">avant blanchiment</div>
+              </div>
+            </div>
+          )}
+
           {filtH.length===0&&<div style={{fontSize:13,color:C.muted,textAlign:"center",padding:"3rem",opacity:.5}}>Aucune transaction</div>}
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {filtH.map(h=>{
@@ -1634,7 +1704,7 @@ function Main({cu,setCu,onLogout}){
                     <div><span style={{fontWeight:700,fontSize:14}}>{who}</span>{h.membre&&<span style={{fontSize:12,color:C.muted,marginLeft:8}}>· payé par {h.membre}</span>}<div style={{fontSize:11,color:C.muted,marginTop:2}}>{tl}</div></div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:15,fontWeight:700,color:C.red}}>{fmt(h.total)}</div>
+                        <div style={{fontSize:15,fontWeight:700,color:C.green}}>{fmt(h.total)}</div>
                         {totPoidsH>0&&<div style={{fontSize:11,color:C.blue}}>{fmtKgD(totPoidsH)}</div>}
                         <div style={{fontSize:11,color:C.muted}}>{h.date}</div>
                       </div>
@@ -1964,7 +2034,7 @@ function StatsView({history,blanchHistory}){
   const repItems=[
     {label:"Objets",val:rep.objets,color:C.blue},
     {label:"Liasses",val:rep.liasses,color:C.green},
-    {label:"Argent sale",val:rep.argent,color:C.amber},
+    {label:"Argent sale",val:rep.argent,color:C.red},
   ];
 
   // Top 5 PM
@@ -2009,7 +2079,7 @@ function StatsView({history,blanchHistory}){
           <div style={{fontSize:10,color:C.muted}}>{r.cat||"—"} · {r.count} tx</div>
         </div>
         <div style={{textAlign:"right",flexShrink:0}}>
-          <div style={{fontSize:13,fontWeight:600,color:C.red}}>{fmt(r.total)}</div>
+          <div style={{fontSize:13,fontWeight:600,color:C.green}}>{fmt(r.total)}</div>
         </div>
       </div>
     ));
@@ -2038,11 +2108,11 @@ function StatsView({history,blanchHistory}){
       <div data-mobile="grid-4" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12,marginBottom:12}}>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Payé aux PM</div>
-          <div style={{fontSize:20,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totPaye)}</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totPaye)}</div>
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Argent sale généré PM</div>
-          <div style={{fontSize:20,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBrut)}</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBrut)}</div>
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Bénéfice net estimé</div>
