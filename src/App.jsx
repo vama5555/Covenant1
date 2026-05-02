@@ -1497,12 +1497,32 @@ function Main({cu,setCu,onLogout}){
         {TABS.map(t=><button key={t.id} style={ns(t.id)} onClick={()=>setTab(t.id)}>{t.label}</button>)}
       </div>
 
-      {tab==="dashboard"&&(
+      {tab==="dashboard"&&(()=>{
+        // Calcul de la couleur du stock selon le palier
+        const stockPct = pv(totSU,totSM);
+        const stockColor = stockPct>=90 ? "#c41e1e" /* rouge sang */
+                        : stockPct>=80 ? C.red       /* rouge */
+                        : stockPct>=70 ? C.amber     /* jaune/ambre */
+                        : C.text;                     /* normal */
+        return (
         <div>
           <div data-mobile="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:12,marginBottom:16}}>
-            {[{l:"Total coffres",v:fmt(totCoffres)},{l:"Total comptes",v:fmt(totMem)},{l:"Stock apparts",v:fmtKg(totSU)+" / "+fmtKg(totSM),s:pv(totSU,totSM)+"% occupé"}].map(c=>(
-              <div key={c.l} style={card}><div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>{c.l}</div><div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2}}>{c.v}</div>{c.s&&<div style={{fontSize:11,color:C.muted,marginTop:3}}>{c.s}</div>}</div>
-            ))}
+            {/* Total coffres : ROUGE (argent sale) */}
+            <div style={card}>
+              <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Total coffres</div>
+              <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:C.red}}>{fmt(totCoffres)}</div>
+            </div>
+            {/* Total comptes : VERT (argent propre) */}
+            <div style={card}>
+              <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Total comptes</div>
+              <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:C.green}}>{fmt(totMem)}</div>
+            </div>
+            {/* Stock apparts : couleur progressive selon remplissage */}
+            <div style={card}>
+              <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Stock apparts</div>
+              <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:stockColor}}>{fmtKg(totSU)+" / "+fmtKg(totSM)}</div>
+              <div style={{fontSize:11,color:stockColor,marginTop:3,fontWeight:stockPct>=70?600:400}}>{stockPct}% occupé{stockPct>=90?" ⚠":""}</div>
+            </div>
           </div>
 
           <div style={{...card,marginBottom:16,borderLeft:"3px solid "+C.amber}}>
@@ -1573,7 +1593,8 @@ function Main({cu,setCu,onLogout}){
             })}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {tab==="transactions"&&(
         <div style={card}>
@@ -1669,22 +1690,18 @@ function Main({cu,setCu,onLogout}){
               <div className="cv-stat-box">
                 <div className="cv-stat-label">Objets</div>
                 <div className="cv-stat-value">{totauxH.objQte}</div>
-                <div className="cv-stat-sub">{totauxH.objRevente>0?fmt(totauxH.objRevente)+" revente":"—"}</div>
               </div>
               <div className="cv-stat-box">
                 <div className="cv-stat-label">Liasses</div>
                 <div className="cv-stat-value">{totauxH.liasseQte}</div>
-                <div className="cv-stat-sub">{totauxH.liasseFace>0?fmt(totauxH.liasseFace)+" face":"—"}</div>
               </div>
               <div className="cv-stat-box">
                 <div className="cv-stat-label">Payé aux PM</div>
                 <div className="cv-stat-value" style={{color:C.green}}>{fmt(totauxH.payePM)}</div>
-                <div className="cv-stat-sub">en argent propre</div>
               </div>
               <div className="cv-stat-box">
                 <div className="cv-stat-label">Sale généré</div>
                 <div className="cv-stat-value" style={{color:C.red}}>{fmt(totauxH.sale)}</div>
-                <div className="cv-stat-sub">avant blanchiment</div>
               </div>
             </div>
           )}
