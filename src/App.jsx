@@ -410,24 +410,28 @@ function AppartCard({a,updateAppart,copied,setCopied}){
   };
 
   return (
-    <div style={{...card,borderLeft:"3px solid "+ac.color,padding:"10px 12px"}}>
-      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-        <span style={{flex:1,fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{a.nom}</span>
-        <span style={{flexShrink:0,fontSize:9,padding:"2px 7px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span>
+    <div style={{...card,borderLeft:"3px solid "+ac.color,padding:"14px 16px"}}>
+      {/* Header : nom + catégorie + code, séparé par une fine ligne */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:14,paddingBottom:10,borderBottom:"1px solid "+C.border}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
+          <span style={{fontWeight:700,fontSize:15,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{a.nom}</span>
+          <span style={{flexShrink:0,fontSize:9,padding:"2px 8px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span>
+        </div>
         {a.code?(
           <button onClick={()=>{navigator.clipboard?.writeText(a.code);setCopied(a.id);setTimeout(()=>setCopied(null),1500);}}
-            style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+(copied===a.id?C.green:C.border),borderRadius:6,color:copied===a.id?C.green:C.muted,transition:"all .2s"}}>
-            <span style={{fontFamily:"monospace",fontSize:11,color:copied===a.id?C.green:C.text}}>{a.code}</span>
-            <span style={{fontSize:10}}>{copied===a.id?"✓":"⧉"}</span>
+            style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"4px 9px",background:C.surfaceAlt,border:"1px solid "+(copied===a.id?C.green:C.border),borderRadius:6,color:copied===a.id?C.green:C.muted,transition:"all .2s"}}>
+            <span style={{fontFamily:"monospace",fontSize:12,color:copied===a.id?C.green:C.text,letterSpacing:"0.5px"}}>{a.code}</span>
+            <span style={{fontSize:11}}>{copied===a.id?"✓":"⧉"}</span>
           </button>
         ):(
-          <div style={{flexShrink:0,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,fontSize:10,color:C.muted,fontStyle:"italic"}}>—</div>
+          <div style={{flexShrink:0,padding:"4px 9px",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,fontSize:11,color:C.muted,fontStyle:"italic"}}>—</div>
         )}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-            <span style={{fontSize:10,color:lblColor(coffreDirty,coffreStatus),fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Coffre</span>
+      {/* Bloc Stocks */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:10,color:lblColor(coffreDirty,coffreStatus),fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>Coffre</span>
             {coffreStatus==="saving"&&<span style={{fontSize:9,color:C.blue,fontWeight:600}}>•••</span>}
             {coffreStatus==="saved"&&<span style={{fontSize:9,color:C.green,fontWeight:600}}>✓</span>}
             {coffreDirty&&!coffreStatus&&<span style={{fontSize:9,color:C.amber,fontWeight:600}}>•</span>}
@@ -436,12 +440,12 @@ function AppartCard({a,updateAppart,copied,setCopied}){
             onChange={e=>{setCoffre(e.target.value);setCoffreDirty(true);}}
             onBlur={saveCoffre}
             onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
-            style={{width:"100%",fontSize:13,marginBottom:5,padding:"5px 8px",border:"1px solid "+borderColor(coffreDirty,coffreStatus)+"!important"}}/>
+            style={{width:"100%",fontSize:15,fontWeight:600,padding:"7px 10px",border:"1px solid "+borderColor(coffreDirty,coffreStatus)+"!important"}}/>
           <Bar val={a.coffre} max={a.max_coffre}/>
         </div>
-        <div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-            <span style={{fontSize:10,color:lblColor(stockDirty,stockStatus),fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Stock</span>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:10,color:lblColor(stockDirty,stockStatus),fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>Stock</span>
             {stockStatus==="saving"&&<span style={{fontSize:9,color:C.blue,fontWeight:600}}>•••</span>}
             {stockStatus==="saved"&&<span style={{fontSize:9,color:C.green,fontWeight:600}}>✓</span>}
             {stockDirty&&!stockStatus&&<span style={{fontSize:9,color:C.amber,fontWeight:600}}>•</span>}
@@ -450,7 +454,7 @@ function AppartCard({a,updateAppart,copied,setCopied}){
             onChange={e=>{setStock(e.target.value);setStockDirty(true);}}
             onBlur={saveStock}
             onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
-            style={{width:"100%",fontSize:13,marginBottom:5,padding:"5px 8px",border:"1px solid "+borderColor(stockDirty,stockStatus)+"!important"}}/>
+            style={{width:"100%",fontSize:15,fontWeight:600,padding:"7px 10px",border:"1px solid "+borderColor(stockDirty,stockStatus)+"!important"}}/>
           <Bar val={a.stock} max={a.max_stock}/>
         </div>
       </div>
@@ -1402,7 +1406,7 @@ function Main({cu,setCu,onLogout}){
   const membersDisplayed=showAll.members?members:members.slice(0,PREVIEW);
 
   return (
-    <div data-mobile="container" style={{padding:"1.25rem",maxWidth:920,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text}}>
+    <div data-mobile="container" style={{padding:"1.25rem",maxWidth:1180,margin:"0 auto",minHeight:"100vh",background:C.bg,color:C.text}}>
       <style>{G}</style>
 
       <input ref={fileRefPM}    type="file" accept=".csv,text/csv" onChange={e=>onFileChosen(e,"items_pm")} style={{display:"none"}}/>
