@@ -618,13 +618,14 @@ function Main({cu,setCu,onLogout}){
   const [blanchHistory,setBlanchHistory]=useState([]);
   const [alertThreshold,setAlertThreshold]=useState(10000);
   const [auditLogs,setAuditLogs]=useState([]);
+  const [pmGroupes,setPMGroupes]=useState([]);
 
   const loadAll=useCallback(async()=>{
     setLoading(true);
     const cutoff=new Date(Date.now()-30*24*3600*1000).toISOString();
     sb.from("audit_log").delete().lt("created_at",cutoff).then(()=>{});
 
-    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st,al,bh]=await Promise.all([
+    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st,al,bh,pg]=await Promise.all([
       sb.from("apparts").select("*").order("nom"),
       sb.from("categories_pm").select("*").order("pct_objets"),
       sb.from("categories_gang").select("*").order("pct_objets"),
@@ -639,6 +640,7 @@ function Main({cu,setCu,onLogout}){
       sb.from("app_settings").select("*").eq("key","alert_threshold").maybeSingle(),
       sb.from("audit_log").select("*").order("created_at",{ascending:false}).limit(500),
       sb.from("blanchiment_history").select("*").order("recup_at",{ascending:false}).limit(500),
+      sb.from("pm_groupes").select("*").order("nom"),
     ]);
     setApparts(a.data||[]);
     setCatsPM(cpm.data||[]);
@@ -654,6 +656,7 @@ function Main({cu,setCu,onLogout}){
     if(st.data&&st.data.value)setAlertThreshold(+st.data.value||10000);
     setAuditLogs(al.data||[]);
     setBlanchHistory(bh.data||[]);
+    setPMGroupes(pg.data||[]);
     setLoading(false);
   },[]);
 
@@ -676,6 +679,7 @@ function Main({cu,setCu,onLogout}){
       blanchiment:       ()=>sb.from("blanchiment").select("*").order("depot_at",{ascending:false}).limit(1).then(({data})=>setBlanch((data&&data[0])||null)),
       blanchiment_history:()=>sb.from("blanchiment_history").select("*").order("recup_at",{ascending:false}).limit(500).then(({data})=>setBlanchHistory(data||[])),
       audit_log:         ()=>sb.from("audit_log").select("*").order("created_at",{ascending:false}).limit(500).then(({data})=>setAuditLogs(data||[])),
+      pm_groupes:        ()=>sb.from("pm_groupes").select("*").order("nom").then(({data})=>setPMGroupes(data||[])),
       app_settings:      async ()=>{
                             const {data}=await sb.from("app_settings").select("*").eq("key","alert_threshold").maybeSingle();
                             if(data&&data.value)setAlertThreshold(+data.value||10000);
@@ -709,6 +713,7 @@ function Main({cu,setCu,onLogout}){
       .on("postgres_changes", {event:"*", schema:"public", table:"blanchiment_history"},p=>triggerReload("blanchiment_history"))
       .on("postgres_changes", {event:"*", schema:"public", table:"audit_log"},          p=>triggerReload("audit_log"))
       .on("postgres_changes", {event:"*", schema:"public", table:"app_settings"},       p=>triggerReload("app_settings"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"pm_groupes"},         p=>triggerReload("pm_groupes"))
       .subscribe();
 
     return () => {
@@ -780,9 +785,31 @@ function Main({cu,setCu,onLogout}){
   const E0={dest:"pm",pmId:"",gangId:"",membreId:"",qtes:{},liasseQte:"",argentSale:"",date:today(),note:""};
   const [tx,setTx]=useState(E0);
 
-  const selPM    = pms.find(p=>p.id===tx.pmId)||null;
+  // ── Gestion PM/Groupes : un id préfixé "g:" indique un groupe, sinon c'est une PM normale ──
+  // Liste fusionnée PM + Groupes pour le sélecteur Transactions
+  const pmsAndGroupes = useMemo(()=>{
+    // PM individuelles (toutes, même celles dans un groupe — choix utilisateur "afficher tout")
+    const pmList = pms.map(p=>({type:"pm", id:p.id, value:p.id, label:p.nom, pm:p, categorie_id:p.categorie_id}));
+    // Groupes (avec catégorie héritée = la plus haute des PM membres)
+    const groupList = pmGroupes.map(g=>{
+      const membres = pms.filter(p=>p.groupe_id===g.id);
+      // Catégorie la plus haute = celle avec le plus haut pct_objets
+      let topCatId = null, topPct = -1;
+      membres.forEach(m=>{
+        const c = catsPM.find(x=>x.id===m.categorie_id);
+        if(c && c.pct_objets > topPct){ topPct = c.pct_objets; topCatId = c.id; }
+      });
+      return {type:"groupe", id:g.id, value:"g:"+g.id, label:"👥 "+g.nom+" ("+membres.length+")", groupe:g, membres, categorie_id:topCatId};
+    });
+    return [...pmList, ...groupList].sort((a,b)=>a.label.localeCompare(b.label,"fr"));
+  },[pms,pmGroupes,catsPM]);
+
+  // Sélection courante : peut être une PM ou un groupe
+  const selPMorGroupe = pmsAndGroupes.find(x=>x.value===tx.pmId) || null;
+  const selPM    = selPMorGroupe?.type==="pm" ? selPMorGroupe.pm : null;
+  const selGroupe= selPMorGroupe?.type==="groupe" ? selPMorGroupe.groupe : null;
   const selGang  = gangs.find(g=>g.id===tx.gangId)||null;
-  const selCatPM = selPM  ? catsPM.find(c=>c.id===selPM.categorie_id)||null  : null;
+  const selCatPM = selPMorGroupe ? catsPM.find(c=>c.id===selPMorGroupe.categorie_id)||null : null;
   const selCatG  = selGang? catsGang.find(c=>c.id===selGang.categorie_id)||null: null;
   const aPct     = tx.dest==="pm"?(selCatPM?selCatPM.pct_objets:0):(selCatG?selCatG.pct_objets:0);
   const aLiasse  = tx.dest==="pm"?(selCatPM?selCatPM.taux_liasse:0):(selCatG?selCatG.taux_liasse:0);
@@ -817,9 +844,11 @@ function Main({cu,setCu,onLogout}){
     if(totLia>0){types.push("liasses");det.liasse_qte=+(tx.liasseQte);det.taux_liasse=aLiasse;det.valeur_face=70*(+(tx.liasseQte));}
     if(totArg>0&&tx.dest==="pm"){types.push("argent");det.argent_sale=+(tx.argentSale);}
     const mb=members.find(m=>m.id===tx.membreId)||null;
+    // Nom enregistré : si groupe sélectionné, on prend le nom du groupe
+    const pmNomFinal = tx.dest==="pm" ? (selGroupe ? selGroupe.nom : (selPM ? selPM.nom : null)) : null;
     const payload={
       dest:tx.dest, types, date:tx.date, note:tx.note, total:txTotal,
-      pm_nom:tx.dest==="pm"&&selPM?selPM.nom:null,
+      pm_nom:pmNomFinal,
       pm_cat:tx.dest==="pm"&&selCatPM?selCatPM.nom:null,
       pm_pct:tx.dest==="pm"?aPct:null,
       gang_nom:tx.dest==="gang"&&selGang?selGang.nom:null,
@@ -835,8 +864,8 @@ function Main({cu,setCu,onLogout}){
     setHistory(h=>[optimisticTx, ...h]);
     if(mb) setMembers(ms=>ms.map(x=>x.id===mb.id?{...x,solde:x.solde-txTotal}:x));
 
-    const who=tx.dest==="pm"?(selPM?.nom||"?")+" · "+(selCatPM?.nom||"?"):(selGang?.nom||"?")+" · "+(selCatG?.nom||"?");
-    log("tx","create",`a enregistré une transaction ${tx.dest==="pm"?"PM":"Gang"} <b>${who}</b> · <b>${fmt(txTotal)}</b>${totPoids>0?" · "+fmtKgD(totPoids):""}${mb?" (payée par "+mb.nom+")":""}`);
+    const who=tx.dest==="pm"?(pmNomFinal||"?")+" · "+(selCatPM?.nom||"?"):(selGang?.nom||"?")+" · "+(selCatG?.nom||"?");
+    log("tx","create",`a enregistré une transaction ${tx.dest==="pm"?"PM":"Gang"}${selGroupe?" (groupe)":""} <b>${who}</b> · <b>${fmt(txTotal)}</b>${totPoids>0?" · "+fmtKgD(totPoids):""}${mb?" (payée par "+mb.nom+")":""}`);
     setTx(E0);
 
     // Envoi en arrière-plan : Realtime se chargera de remplacer le temp par le vrai ID
@@ -981,8 +1010,11 @@ function Main({cu,setCu,onLogout}){
   const [nU,setNU]=useState({nom:"",code:"",role:"membre"});
 
   // États "Voir tous" pour les listes pliables Database et membres
-  const [showAll,setShowAll]=useState({catsPM:false,catsGang:false,pms:false,gangs:false,itemsPM:false,itemsG:false,apparts:false,members:false});
+  const [showAll,setShowAll]=useState({catsPM:false,catsGang:false,pms:false,gangs:false,itemsPM:false,itemsG:false,apparts:false,members:false,groupes:false});
   const PREVIEW=5;
+  // États pour gérer les groupes PM
+  const [eGr,setEGr]=useState(null); // ID du groupe en édition
+  const [nGr,setNGr]=useState(""); // Nom du nouveau groupe
 
   const [eApId,setEApId]=useState(null);
   const [eApV,setEApV]=useState({});
@@ -1210,7 +1242,7 @@ function Main({cu,setCu,onLogout}){
   function PMList(){
     async function save(p){
       const before=pms.find(x=>x.id===p.id);
-      await sb.from("pms").update({nom:p.nom,categorie_id:p.categorie_id}).eq("id",p.id);
+      await sb.from("pms").update({nom:p.nom,categorie_id:p.categorie_id,numero:p.numero||null,lieu_taff:p.lieu_taff||null,groupe_id:p.groupe_id||null}).eq("id",p.id);
       setPMs(ps=>ps.map(x=>x.id===p.id?p:x));setEPM(null);
       if(before){
         const ch=[];
@@ -1219,6 +1251,13 @@ function Main({cu,setCu,onLogout}){
           const oldCat=catsPM.find(c=>c.id===before.categorie_id)?.nom||"?";
           const newCat=catsPM.find(c=>c.id===p.categorie_id)?.nom||"?";
           ch.push(`catégorie : ${diff(oldCat,newCat)}`);
+        }
+        if((before.numero||"")!==(p.numero||"")) ch.push(`numéro : ${diff(before.numero||"—",p.numero||"—")}`);
+        if((before.lieu_taff||"")!==(p.lieu_taff||"")) ch.push(`lieu : ${diff(before.lieu_taff||"—",p.lieu_taff||"—")}`);
+        if((before.groupe_id||"")!==(p.groupe_id||"")){
+          const oldGr=pmGroupes.find(g=>g.id===before.groupe_id)?.nom||"—";
+          const newGr=pmGroupes.find(g=>g.id===p.groupe_id)?.nom||"—";
+          ch.push(`groupe : ${diff(oldGr,newGr)}`);
         }
         if(ch.length>0) log("items","pm_update",`a modifié la PM <b>${p.nom}</b> · ${ch.join(" · ")}`);
       }
@@ -1243,14 +1282,56 @@ function Main({cu,setCu,onLogout}){
         <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
         {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
       </div>
-      {visible.map(p=>(
-        <div key={p.id} style={S.row}>
-          {isAdmin&&ePM===p.id
-            ?<><input style={{flex:1}} value={p.nom} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,nom:e.target.value}:x))}/><select value={p.categorie_id} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,categorie_id:e.target.value}:x))}>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select><button onClick={()=>save(p)} style={{color:C.green,fontWeight:700}}>OK</button></>
-            :<><span style={{flex:1,fontSize:14,color:C.text}}>{p.nom}</span><span style={{fontSize:12,color:C.muted}}>{catsPM.find(c=>c.id===p.categorie_id)?.nom||"?"}</span>{isAdmin&&<><button onClick={()=>setEPM(p.id)}>Mod.</button><button onClick={()=>del(p.id)} style={{color:C.red}}>×</button></>}</>
-          }
-        </div>
-      ))}
+      {visible.map(p=>{
+        const cat=catsPM.find(c=>c.id===p.categorie_id);
+        const groupe=pmGroupes.find(g=>g.id===p.groupe_id);
+        if(isAdmin&&ePM===p.id){
+          return (
+            <div key={p.id} style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10,padding:"10px 12px",background:C.surfaceAlt,borderRadius:6}}>
+              <input style={{}} placeholder="Nom" value={p.nom||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,nom:e.target.value}:x))}/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                <input placeholder="Numéro" value={p.numero||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,numero:e.target.value}:x))}/>
+                <input placeholder="Lieu de taff" value={p.lieu_taff||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,lieu_taff:e.target.value}:x))}/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                <select value={p.categorie_id||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,categorie_id:e.target.value}:x))}>
+                  <option value="">— catégorie —</option>
+                  {catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+                </select>
+                <select value={p.groupe_id||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,groupe_id:e.target.value||null}:x))}>
+                  <option value="">— aucun groupe —</option>
+                  {pmGroupes.map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}
+                </select>
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                <button onClick={()=>setEPM(null)} style={{fontSize:11,color:C.muted}}>Annuler</button>
+                <button onClick={()=>save(p)} style={{fontSize:11,color:C.green,fontWeight:700}}>OK</button>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"6px 8px",borderRadius:4}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <span style={{fontSize:14,color:C.text,fontWeight:500}}>{p.nom}</span>
+                {groupe&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(227,185,74,0.12)",color:C.amber,border:"1px solid rgba(227,185,74,0.3)",borderRadius:10,fontWeight:600}}>👥 {groupe.nom}</span>}
+              </div>
+              {(p.numero||p.lieu_taff)&&(
+                <div style={{fontSize:11,color:C.dim,marginTop:2,display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {p.numero&&<span>📞 {p.numero}</span>}
+                  {p.lieu_taff&&<span>📍 {p.lieu_taff}</span>}
+                </div>
+              )}
+            </div>
+            <span style={{fontSize:11,color:C.muted,flexShrink:0}}>{cat?.nom||"?"}</span>
+            {isAdmin&&<>
+              <button onClick={()=>setEPM(p.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
+              <button onClick={()=>del(p.id)} style={{fontSize:11,padding:"3px 8px",color:C.red}}>×</button>
+            </>}
+          </div>
+        );
+      })}
       {pms.length>PREVIEW&&(
         <button onClick={()=>setShowAll(s=>({...s,pms:!s.pms}))} style={{width:"100%",fontSize:11,padding:"6px",marginTop:4,background:"transparent",color:C.muted,border:"1px dashed "+C.border,borderRadius:6}}>
           {showAll.pms?"▲ Réduire":`▼ Voir tous (${pms.length})`}
@@ -1258,6 +1339,76 @@ function Main({cu,setCu,onLogout}){
       )}
       {/* Ajout autorisé pour TOUS (admin et membre) — composant stable hors de Main */}
       <AddPMForm catsPM={catsPM} onAdd={add} isAdmin={isAdmin}/>
+    </>;
+  }
+
+  function GroupeList(){
+    async function saveGroupe(g){
+      const before=pmGroupes.find(x=>x.id===g.id);
+      await sb.from("pm_groupes").update({nom:g.nom}).eq("id",g.id);
+      setPMGroupes(gs=>gs.map(x=>x.id===g.id?g:x));
+      setEGr(null);
+      if(before&&before.nom!==g.nom) log("items","groupe_update",`a renommé le groupe <b>${diff(before.nom,g.nom)}</b>`);
+    }
+    async function addGroupe(){
+      if(!nGr.trim())return;
+      const{data}=await sb.from("pm_groupes").insert({nom:nGr.trim()}).select().single();
+      if(data){
+        setPMGroupes(gs=>[...gs,data]);
+        log("items","groupe_create",`a créé le groupe <b>${data.nom}</b>`);
+      }
+      setNGr("");
+    }
+    async function delGroupe(id){
+      const g=pmGroupes.find(x=>x.id===id);
+      if(!g)return;
+      // Détacher toutes les PM du groupe avant suppression
+      await sb.from("pms").update({groupe_id:null}).eq("groupe_id",id);
+      setPMs(ps=>ps.map(p=>p.groupe_id===id?{...p,groupe_id:null}:p));
+      await sb.from("pm_groupes").delete().eq("id",id);
+      setPMGroupes(gs=>gs.filter(x=>x.id!==id));
+      log("items","groupe_delete",`a supprimé le groupe <b>${g.nom}</b>`);
+    }
+    const visible = showAll.groupes ? pmGroupes : pmGroupes.slice(0,PREVIEW);
+    return <>
+      {pmGroupes.length===0&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic",padding:"6px 0"}}>Aucun groupe pour l'instant. Crée-en un ci-dessous puis assigne tes PM dans la liste "Petites mains".</div>}
+      {visible.map(g=>{
+        const membres=pms.filter(p=>p.groupe_id===g.id);
+        if(isAdmin&&eGr===g.id){
+          return (
+            <div key={g.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"8px 10px",background:C.surfaceAlt,borderRadius:6}}>
+              <input style={{flex:1}} value={g.nom} onChange={e=>setPMGroupes(gs=>gs.map(x=>x.id===g.id?{...x,nom:e.target.value}:x))} onKeyDown={e=>e.key==="Enter"&&saveGroupe(g)}/>
+              <button onClick={()=>saveGroupe(g)} style={{fontSize:11,color:C.green,fontWeight:700}}>OK</button>
+            </div>
+          );
+        }
+        return (
+          <div key={g.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"6px 8px"}}>
+            <span style={{fontSize:13}}>👥</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,color:C.text,fontWeight:500}}>{g.nom}</div>
+              <div style={{fontSize:11,color:C.dim,marginTop:1}}>
+                {membres.length===0 ? "aucun membre" : membres.map(m=>m.nom).join(", ")}
+              </div>
+            </div>
+            {isAdmin&&<>
+              <button onClick={()=>setEGr(g.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
+              <button onClick={()=>delGroupe(g.id)} style={{fontSize:11,padding:"3px 8px",color:C.red}}>×</button>
+            </>}
+          </div>
+        );
+      })}
+      {pmGroupes.length>PREVIEW&&(
+        <button onClick={()=>setShowAll(s=>({...s,groupes:!s.groupes}))} style={{width:"100%",fontSize:11,padding:"6px",marginTop:4,background:"transparent",color:C.muted,border:"1px dashed "+C.border,borderRadius:6}}>
+          {showAll.groupes?"▲ Réduire":`▼ Voir tous (${pmGroupes.length})`}
+        </button>
+      )}
+      {isAdmin&&(
+        <div style={{display:"flex",gap:6,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:6}}>
+          <input style={{flex:1}} placeholder="Nom du groupe (ex: Valtid + pote)" value={nGr} onChange={e=>setNGr(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addGroupe()}/>
+          <button onClick={addGroupe} style={{fontWeight:700,color:C.green}}>+ Créer</button>
+        </div>
+      )}
     </>;
   }
 
@@ -1726,7 +1877,7 @@ function Main({cu,setCu,onLogout}){
           </div>
           <div data-mobile="tx-form-top" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:10,marginBottom:14}}>
             {tx.dest==="pm"
-              ?<div><div style={S.lbl}>PM</div><select style={S.inp} value={tx.pmId} onChange={e=>setTx(f=>({...f,pmId:e.target.value}))}><option value="">— choisir —</option>{pms.map(p=><option key={p.id} value={p.id}>{p.nom}</option>)}</select></div>
+              ?<div><div style={S.lbl}>PM ou Groupe</div><select style={S.inp} value={tx.pmId} onChange={e=>setTx(f=>({...f,pmId:e.target.value}))}><option value="">— choisir —</option>{pmsAndGroupes.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></div>
               :<div><div style={S.lbl}>Gang</div><select style={S.inp} value={tx.gangId} onChange={e=>setTx(f=>({...f,gangId:e.target.value}))}><option value="">— choisir —</option>{gangs.map(g=><option key={g.id} value={g.id}>{g.nom}</option>)}</select></div>
             }
             {tx.dest==="pm"&&<div><div style={S.lbl}>Payé par</div><select style={S.inp} value={tx.membreId} onChange={e=>setTx(f=>({...f,membreId:e.target.value}))}><option value="">— membre —</option>{members.map(m=><option key={m.id} value={m.id}>{m.nom} ({fmt(m.solde)})</option>)}</select></div>}
@@ -1905,12 +2056,14 @@ function Main({cu,setCu,onLogout}){
             <div style={card}><div style={S.sec}>Catégories PM</div><CatTable cats={catsPM} setCats={setCatsPM} table="categories_pm" eId={eCPM} setEId={setECPM} nc={nCPM} setNc={setNCPM}/></div>
             <div style={card}><div style={S.sec}>Petites mains</div><PMList/></div>
           </div>
-          {/* Ligne 2 : Catégories gangs + Gangs */}
+          {/* Ligne 2 : Groupes PM (pleine largeur) */}
+          <div style={card}><div style={S.sec}>Groupes PM{!isAdmin&&" · lecture seule"}</div><GroupeList/></div>
+          {/* Ligne 3 : Catégories gangs + Gangs */}
           <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             <div style={card}><div style={S.sec}>Catégories gangs</div><CatTable cats={catsGang} setCats={setCatsGang} table="categories_gang" eId={eCG} setEId={setECG} nc={nCG} setNc={setNCG}/></div>
             <div style={card}><div style={S.sec}>Gangs{!isAdmin&&" · lecture seule"}</div><GangList/></div>
           </div>
-          {/* Ligne 3 : Items PM + Items gangs */}
+          {/* Ligne 4 : Items PM + Items gangs */}
           <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm" allKey="itemsPM"/></div>
             <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="items_gang" allKey="itemsG"/></div>
