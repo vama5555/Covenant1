@@ -363,17 +363,11 @@ function MemberCard({m,low,setMembers,onLog,dense,idx,total}){
     if(onLog) onLog("money","balance_update",`a modifié le solde de <b>${m.nom}</b> : ${`<b>${fmt(before)}</b> → <b>${fmt(s)}</b>`}`);
   }
 
-  // Mode dense : cellule de tableau (sans border-radius, bordures fines)
+  // Mode dense : cellule de tableau (bordures gérées par le grid parent via gap)
   if(dense){
-    // Calcul des bordures pour effet "tableau" (pas de bordure right sur la dernière colonne, pas de bottom sur la dernière ligne)
-    const colsPerRow = 6;
-    const isLastInRow = (idx+1) % colsPerRow === 0;
-    const isLastRow = idx >= Math.floor((total-1)/colsPerRow)*colsPerRow;
     return (
       <div style={{
-        background:low?"rgba(223,90,68,0.06)":"transparent",
-        borderRight:isLastInRow?"none":"1px solid "+C.border,
-        borderBottom:isLastRow?"none":"1px solid "+C.border,
+        background:low?"rgba(223,90,68,0.06)":C.surface,
         padding:"12px 14px",
         transition:"background .2s"
       }}>
@@ -1712,10 +1706,10 @@ function Main({cu,setCu,onLogout}){
             <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em"}}>Comptes membres</span>
             <span style={{fontSize:10,color:C.dim}}>· {members.length}</span>
           </div>
-          <div data-mobile="members-grid" style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:0,border:"1px solid "+C.border,borderRadius:8,overflow:"hidden",background:C.surface}}>
+          <div data-mobile="members-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:1,border:"1px solid "+C.border,borderRadius:8,overflow:"hidden",background:C.border}}>
             {members.map((m,i)=>{
               const low=m.solde<alertThreshold;
-              return <MemberCard key={m.id} m={m} low={low} setMembers={setMembers} onLog={log} dense={true} idx={i} total={members.length}/>;
+              return <MemberCard key={m.id} m={m} low={low} setMembers={setMembers} onLog={log} dense={true}/>;
             })}
           </div>
         </div>
