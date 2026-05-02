@@ -156,12 +156,12 @@ function Login({onLogin}){
     setLoading(false);
   }
 
-  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+  return <div style={{minHeight:"100vh",background:C.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"1rem",paddingTop:"3vh"}}>
     <style>{G}</style>
-    <div style={{marginBottom:32,textAlign:"center"}}>
-      <img src="/SClogo.png" alt="Silent Covenant" style={{width:96,height:96,margin:"0 auto 12px",display:"block",objectFit:"contain"}}/>
-      <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.18em",marginBottom:8}}>Accès sécurisé</div>
-      <h1 style={{fontSize:28,fontWeight:700,color:C.text,margin:0}}>Compta Covenant</h1>
+    <div style={{marginBottom:24,textAlign:"center"}}>
+      <img src="/SClogo.png" alt="Silent Covenant" style={{width:80,height:80,margin:"0 auto 8px",display:"block",objectFit:"contain"}}/>
+      <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.18em",marginBottom:6}}>Accès sécurisé</div>
+      <h1 style={{fontSize:26,fontWeight:700,color:C.text,margin:0}}>Compta Covenant</h1>
     </div>
     <div style={{...card,width:"100%",maxWidth:360,padding:"24px"}}>
       <div style={{fontSize:11,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Utilisateur</div>
