@@ -411,16 +411,16 @@ function AppartCard({a,updateAppart,copied,setCopied}){
   return (
     <div style={{...card,borderLeft:"3px solid "+ac.color,padding:"10px 12px"}}>
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-        <span style={{flex:"0 1 auto",fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0,maxWidth:"40%"}}>{a.nom}</span>
+        <span style={{flex:1,fontWeight:700,fontSize:13,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{a.nom}</span>
         <span style={{flexShrink:0,fontSize:9,padding:"2px 7px",fontWeight:700,background:ac.bg,color:ac.color,border:"1px solid "+ac.color+"66",borderRadius:20}}>{ac.label}</span>
         {a.code?(
           <button onClick={()=>{navigator.clipboard?.writeText(a.code);setCopied(a.id);setTimeout(()=>setCopied(null),1500);}}
-            style={{flex:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:4,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+(copied===a.id?C.green:C.border),borderRadius:6,color:copied===a.id?C.green:C.muted,transition:"all .2s",minWidth:0}}>
-            <span style={{fontFamily:"monospace",fontSize:11,color:copied===a.id?C.green:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.code}</span>
-            <span style={{fontSize:10,flexShrink:0}}>{copied===a.id?"✓":"⧉"}</span>
+            style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+(copied===a.id?C.green:C.border),borderRadius:6,color:copied===a.id?C.green:C.muted,transition:"all .2s"}}>
+            <span style={{fontFamily:"monospace",fontSize:11,color:copied===a.id?C.green:C.text}}>{a.code}</span>
+            <span style={{fontSize:10}}>{copied===a.id?"✓":"⧉"}</span>
           </button>
         ):(
-          <div style={{flex:1,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,fontSize:10,color:C.muted,fontStyle:"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>pas de code</div>
+          <div style={{flexShrink:0,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,fontSize:10,color:C.muted,fontStyle:"italic"}}>—</div>
         )}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -1523,10 +1523,23 @@ function Main({cu,setCu,onLogout}){
               <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Total comptes</div>
               <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:C.green}}>{fmt(totMem)}</div>
             </div>
-            {/* Stock apparts : couleur progressive selon remplissage */}
+            {/* Stock apparts : chiffre en gros + barre de progression */}
             <div style={card}>
               <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:6}}>Stock apparts</div>
-              <div style={{fontSize:18,fontWeight:700,wordBreak:"break-word",lineHeight:1.2,color:stockColor}}>{fmtKg(totSU)+" / "+fmtKg(totSM)}{stockPct>=90?" ⚠":""}</div>
+              <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:22,fontWeight:700,lineHeight:1,color:stockColor}}>{fmtKg(totSU)}</span>
+                <span style={{fontSize:12,fontWeight:500,color:C.muted}}>/ {fmtKg(totSM)}</span>
+                {stockPct>=90&&<span style={{fontSize:13,color:stockColor,fontWeight:700}}>⚠</span>}
+              </div>
+              <div style={{height:6,background:C.surfaceAlt,borderRadius:3,overflow:"hidden",border:"1px solid "+C.border}}>
+                <div style={{
+                  width:Math.min(100,stockPct)+"%",
+                  height:"100%",
+                  background:stockColor,
+                  transition:"width .3s ease, background .3s ease",
+                  borderRadius:3
+                }}/>
+              </div>
             </div>
           </div>
 
@@ -1901,7 +1914,6 @@ function Main({cu,setCu,onLogout}){
           <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:isAdmin?"1fr 1fr":"1fr",gap:16}}>
             <div style={card}>
               <div style={S.sec}>Mon mot de passe</div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Connecté en tant que <strong style={{color:C.text}}>{cu.nom}</strong></div>
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 <div><div style={S.lbl}>Code actuel</div><input type="password" style={S.inp} value={pwd.cur} onChange={e=>setPwd(f=>({...f,cur:e.target.value}))}/></div>
                 <div><div style={S.lbl}>Nouveau code</div><input type="password" style={S.inp} value={pwd.neu} onChange={e=>setPwd(f=>({...f,neu:e.target.value}))}/></div>
@@ -1915,7 +1927,6 @@ function Main({cu,setCu,onLogout}){
             {isAdmin&&(
               <div style={card}>
                 <div style={S.sec}>Paramètres généraux — admin uniquement</div>
-                <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Configuration de l'application.</div>
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   <div>
                     <div style={S.lbl}>Seuil d'alerte solde compte ($)</div>
