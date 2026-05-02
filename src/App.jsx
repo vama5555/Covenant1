@@ -915,16 +915,13 @@ function Main({cu,setCu,onLogout}){
   const [nBM,setNBM]=useState({nom:"",solde:""});
   const [nU,setNU]=useState({nom:"",code:"",role:"membre"});
 
-  // États "Voir tous" pour les listes pliables Database
-  const [showAll,setShowAll]=useState({catsPM:false,catsGang:false,pms:false,gangs:false,itemsPM:false,itemsG:false,apparts:false});
+  // États "Voir tous" pour les listes pliables Database et membres
+  const [showAll,setShowAll]=useState({catsPM:false,catsGang:false,pms:false,gangs:false,itemsPM:false,itemsG:false,apparts:false,members:false});
   const PREVIEW=5;
 
   const [eApId,setEApId]=useState(null);
   const [eApV,setEApV]=useState({});
   const [nAp,setNAp]=useState({nom:"",categorie:"recel",max_coffre:"",max_stock:"",code:""});
-
-  // États "Voir tout / Réduire" pour les listes pliables Database
-  const [showAll,setShowAll]=useState({itemsPM:false,itemsG:false,members:false,apparts:false});
 
   // Filtres Bigbrother
   const [bbFilter,setBBFilter]=useState({user:"",cat:"",from:ago(30),to:today(),search:""});
