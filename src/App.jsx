@@ -1158,6 +1158,7 @@ function Main({cu,setCu,onLogout}){
   const [nCPM,setNCPM]=useState({nom:"",pct_objets:"",taux_liasse:""}); const [eCPM,setECPM]=useState(null);
   const [nCG,setNCG]=useState({nom:"",pct_objets:"",taux_liasse:""});   const [eCG,setECG]=useState(null);
   const [nPM,setNPM]=useState({nom:"",categorie_id:""});   const [ePM,setEPM]=useState(null);
+  const [pmSearch,setPMSearch]=useState("");
   const [nGa,setNGa]=useState({nom:"",categorie_id:""});   const [eGa,setEGa]=useState(null);
   const [nIPM,setNIPM]=useState({nom:"",prix:"",poids:""});  const [eIPM,setEIPM]=useState(null);
   const [nIG,setNIG]=useState({nom:"",prix:"",poids:""});    const [eIG,setEIG]=useState(null);
@@ -1435,16 +1436,44 @@ function Main({cu,setCu,onLogout}){
       setPMs(ps=>ps.filter(x=>x.id!==id));
       if(p) log("items","pm_delete",`a supprimé la PM <b>${p.nom}</b>`);
     }
-    const visible = showAll.pms ? pms : pms.slice(0,PREVIEW);
+    // Filtrage par recherche (nom ou numéro)
+    const searchLower = pmSearch.trim().toLowerCase();
+    const filteredPMs = searchLower
+      ? pms.filter(p=>{
+          const nomMatch = (p.nom||"").toLowerCase().includes(searchLower);
+          const numMatch = (p.numero||"").toLowerCase().includes(searchLower);
+          const lieuMatch = (p.lieu_taff||"").toLowerCase().includes(searchLower);
+          return nomMatch || numMatch || lieuMatch;
+        })
+      : pms;
+    const visible = showAll.pms ? filteredPMs : filteredPMs.slice(0,PREVIEW);
     return <>
-      <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <div style={{position:"relative",flex:1}}>
+          <input
+            type="text"
+            placeholder="🔍 Rechercher par nom, numéro ou lieu..."
+            value={pmSearch}
+            onChange={e=>setPMSearch(e.target.value)}
+            style={{width:"100%",fontSize:12,padding:"6px 10px"}}
+          />
+          {pmSearch&&(
+            <button
+              onClick={()=>setPMSearch("")}
+              title="Effacer la recherche"
+              style={{position:"absolute",right:4,top:"50%",transform:"translateY(-50%)",fontSize:11,padding:"2px 8px",border:"none",background:"transparent",color:C.muted,cursor:"pointer"}}
+            >×</button>
+          )}
+        </div>
         <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
         {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
       </div>
+      {searchLower&&filteredPMs.length===0&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic",padding:"10px 0",textAlign:"center"}}>Aucune PM trouvée pour "{pmSearch}"</div>}
+      {searchLower&&filteredPMs.length>0&&<div style={{fontSize:11,color:C.dim,marginBottom:6}}>{filteredPMs.length} résultat{filteredPMs.length>1?"s":""}</div>}
       {visible.map(p=>{
         const cat=catsPM.find(c=>c.id===p.categorie_id);
         const groupe=pmGroupes.find(g=>g.id===p.groupe_id);
-        if(isAdmin&&ePM===p.id){
+        if(ePM===p.id){
           return (
             <EditPMForm
               key={p.id}
@@ -1475,16 +1504,14 @@ function Main({cu,setCu,onLogout}){
               {p.lieu_taff&&<span style={{fontSize:11,color:C.dim,display:"inline-flex",alignItems:"center",gap:3}}>📍 {p.lieu_taff}</span>}
             </div>
             <span style={{fontSize:11,color:C.muted,flexShrink:0}}>{cat?.nom||"?"}</span>
-            {isAdmin&&<>
-              <button onClick={()=>setEPM(p.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
-              <button onClick={()=>del(p.id)} style={{fontSize:11,padding:"3px 8px",color:C.red}}>×</button>
-            </>}
+            <button onClick={()=>setEPM(p.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
+            {isAdmin&&<button onClick={()=>del(p.id)} style={{fontSize:11,padding:"3px 8px",color:C.red}}>×</button>}
           </div>
         );
       })}
-      {pms.length>PREVIEW&&(
+      {filteredPMs.length>PREVIEW&&(
         <button onClick={()=>setShowAll(s=>({...s,pms:!s.pms}))} style={{width:"100%",fontSize:11,padding:"6px",marginTop:4,background:"transparent",color:C.muted,border:"1px dashed "+C.border,borderRadius:6}}>
-          {showAll.pms?"▲ Réduire":`▼ Voir tous (${pms.length})`}
+          {showAll.pms?"▲ Réduire":`▼ Voir ${searchLower?"tous les résultats":"tous"} (${filteredPMs.length})`}
         </button>
       )}
       {/* Ajout autorisé pour TOUS (admin et membre) — composant stable hors de Main */}
@@ -1522,7 +1549,7 @@ function Main({cu,setCu,onLogout}){
       {pmGroupes.length===0&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic",padding:"6px 0"}}>Aucun groupe pour l'instant. Crée-en un ci-dessous puis assigne tes PM dans la liste "Petites mains".</div>}
       {visible.map(g=>{
         const membres=pms.filter(p=>p.groupe_id===g.id);
-        if(isAdmin&&eGr===g.id){
+        if(eGr===g.id){
           return (
             <EditGroupeForm
               key={g.id}
@@ -1541,10 +1568,8 @@ function Main({cu,setCu,onLogout}){
                 {membres.length===0 ? "aucun membre" : membres.map(m=>m.nom).join(", ")}
               </div>
             </div>
-            {isAdmin&&<>
-              <button onClick={()=>setEGr(g.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
-              <button onClick={()=>delGroupe(g.id)} style={{fontSize:11,padding:"3px 8px",color:C.red}}>×</button>
-            </>}
+            <button onClick={()=>setEGr(g.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
+            {isAdmin&&<button onClick={()=>delGroupe(g.id)} style={{fontSize:11,padding:"3px 8px",color:C.red}}>×</button>}
           </div>
         );
       })}
@@ -1553,7 +1578,7 @@ function Main({cu,setCu,onLogout}){
           {showAll.groupes?"▲ Réduire":`▼ Voir tous (${pmGroupes.length})`}
         </button>
       )}
-      {isAdmin&&<AddGroupeForm onAdd={addGroupe}/>}
+      <AddGroupeForm onAdd={addGroupe}/>
     </>;
   }
 
@@ -2237,7 +2262,7 @@ function Main({cu,setCu,onLogout}){
             <div style={card}><div style={S.sec}>Petites mains</div><PMList/></div>
           </div>
           {/* Ligne 2 : Groupes PM (pleine largeur) */}
-          <div style={card}><div style={S.sec}>Groupes PM{!isAdmin&&" · lecture seule"}</div><GroupeList/></div>
+          <div style={card}><div style={S.sec}>Groupes PM</div><GroupeList/></div>
           {/* Ligne 3 : Catégories gangs + Gangs */}
           <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             <div style={card}><div style={S.sec}>Catégories gangs</div><CatTable cats={catsGang} setCats={setCatsGang} table="categories_gang" eId={eCG} setEId={setECG} nc={nCG} setNc={setNCG}/></div>
