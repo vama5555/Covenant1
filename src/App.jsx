@@ -2308,8 +2308,17 @@ function Main({cu,setCu,onLogout}){
                   </div>
                   {exp&&(
                     <div style={{borderTop:"1px solid "+C.border,paddingTop:8,marginTop:8,fontSize:12,color:C.muted}}>
-                      {h.types?.includes("objets")&&(h.lignes||[]).map((l,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>{l.nom} × {l.qte} ({fmt(l.prix)}/u){l.poids>0&&" · "+fmtKgD(l.poids)}</span><span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(l.sous_total))}</span></div>)}
-                      {h.types?.includes("liasses")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Liasses × {h.liasse_qte} (70$/u) · {fmtKgD((h.liasse_qte||0)*0.1)}</span><span style={{color:C.green,fontWeight:600}}>{fmt(h.taux_liasse*h.liasse_qte)}</span></div>}
+                      {h.types?.includes("objets")&&(h.lignes||[]).map((l,i)=>{
+                        // Prix unitaire payé = sous_total / qte (déjà calculé avec le %)
+                        const prixUnitPaye = l.qte>0 ? Math.round((+l.sous_total||0)/(+l.qte||1)) : 0;
+                        return (
+                          <div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                            <span>{l.nom} × {l.qte} ({fmt(prixUnitPaye)}/u){l.poids>0&&" · "+fmtKgD(l.poids)}</span>
+                            <span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(l.sous_total))}</span>
+                          </div>
+                        );
+                      })}
+                      {h.types?.includes("liasses")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Liasses × {h.liasse_qte} ({h.taux_liasse}$/u) · {fmtKgD((h.liasse_qte||0)*0.1)}</span><span style={{color:C.green,fontWeight:600}}>{fmt(h.taux_liasse*h.liasse_qte)}</span></div>}
                       {h.types?.includes("argent")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Argent sale : {fmt(h.argent_sale)} (40%)</span><span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(h.argent_sale*0.4))}</span></div>}
                       {h.note&&<div style={{marginTop:6,fontStyle:"italic"}}>{h.note}</div>}
                     </div>
