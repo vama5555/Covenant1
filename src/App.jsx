@@ -988,11 +988,61 @@ function Main({cu,setCu,onLogout}){
   }
 
   const [hFil,setHFil]=useState({who:""});
-  const whoOpts=useMemo(()=>{const seen=new Set();return history.reduce((acc,h)=>{const n=h.dest==="pm"?(h.pm_nom||""):(h.gang_nom||"");const k=h.dest+":"+n;if(!seen.has(k)&&n){seen.add(k);acc.push({key:k,label:(h.dest==="pm"?"PM — ":"Gang — ")+n});}return acc;},[]);},[history]);
-  const filtH=useMemo(()=>history.filter(h=>{
-    if(hFil.who){const n=h.dest==="pm"?(h.pm_nom||""):(h.gang_nom||"");if((h.dest+":"+n)!==hFil.who)return false;}
-    return h.date>=hFrom&&h.date<=hTo;
-  }),[history,hFil,hFrom,hTo]);
+  // Options du filtre : on inclut les groupes existants en plus des noms de transactions
+  const whoOpts=useMemo(()=>{
+    const seen=new Set();
+    const opts=[];
+    // 1. Ajouter les groupes en premier (avec préfixe 👥)
+    pmGroupes.forEach(g=>{
+      const k="pm:"+g.nom;
+      if(!seen.has(k)){seen.add(k);opts.push({key:k,label:"PM — 👥 "+g.nom});}
+    });
+    // 2. Ajouter les noms de transactions (sauf si déjà dans seen)
+    history.forEach(h=>{
+      const n=h.dest==="pm"?(h.pm_nom||""):(h.gang_nom||"");
+      const k=h.dest+":"+n;
+      if(!seen.has(k)&&n){seen.add(k);opts.push({key:k,label:(h.dest==="pm"?"PM — ":"Gang — ")+n});}
+    });
+    return opts;
+  },[history,pmGroupes]);
+
+  // Helper : noms à matcher pour un filtre donné (résout les groupes en leurs membres)
+  const norm = s => (s||"").toLowerCase().trim().replace(/\s+/g," ");
+  const filtH=useMemo(()=>{
+    let matchNames = null; // null = pas de filtre par nom
+    if(hFil.who){
+      const [dest,...rest] = hFil.who.split(":");
+      const nom = rest.join(":");
+      // Si c'est un nom de groupe : matcher toutes les PM du groupe + le nom du groupe lui-même
+      const groupe = dest==="pm" ? pmGroupes.find(g=>norm(g.nom)===norm(nom)) : null;
+      if(groupe){
+        const memberNames = pms.filter(p=>p.groupe_id===groupe.id).map(p=>norm(p.nom));
+        matchNames = {dest, names:new Set([norm(groupe.nom), ...memberNames])};
+      } else {
+        // Sinon : on regarde aussi si la PM nommée appartient à un groupe (et on étend le filtre)
+        if(dest==="pm"){
+          const pm = pms.find(p=>norm(p.nom)===norm(nom));
+          if(pm && pm.groupe_id){
+            const grp = pmGroupes.find(g=>g.id===pm.groupe_id);
+            if(grp){
+              const memberNames = pms.filter(p=>p.groupe_id===grp.id).map(p=>norm(p.nom));
+              matchNames = {dest, names:new Set([norm(grp.nom), ...memberNames])};
+            }
+          }
+        }
+        if(!matchNames) matchNames = {dest, names:new Set([norm(nom)])};
+      }
+    }
+    return history.filter(h=>{
+      if(matchNames){
+        if(h.dest!==matchNames.dest) return false;
+        const n=h.dest==="pm"?norm(h.pm_nom||""):norm(h.gang_nom||"");
+        if(!matchNames.names.has(n)) return false;
+      }
+      return h.date>=hFrom&&h.date<=hTo;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[history,hFil,hFrom,hTo,pms,pmGroupes]);
 
   // Totaux sur les transactions filtrées (Historique)
   const totauxH=useMemo(()=>{
@@ -2046,14 +2096,18 @@ function Main({cu,setCu,onLogout}){
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {filtH.map(h=>{
               const exp=!!expanded[h.id];
-              // Détecter si la transaction est liée à un groupe (rétroactif) :
-              // - soit le nom enregistré correspond à un groupe existant aujourd'hui
-              // - soit la PM enregistrée appartient maintenant à un groupe
+              // Détecter si la transaction est liée à un groupe (rétroactif)
+              // Comparaison normalisée (insensible à casse/espaces multiples) pour matcher
+              // les vieux noms type "Valtid + pote" avec un groupe créé après
+              const norm = s => (s||"").toLowerCase().trim().replace(/\s+/g," ");
               let groupeAssocie = null;
               if(h.dest==="pm"&&h.pm_nom){
-                groupeAssocie = pmGroupes.find(g=>g.nom===h.pm_nom);
+                const nomNorm = norm(h.pm_nom);
+                // Cas 1 : le nom enregistré correspond directement à un groupe existant
+                groupeAssocie = pmGroupes.find(g=>norm(g.nom)===nomNorm);
                 if(!groupeAssocie){
-                  const pmActuelle = pms.find(p=>p.nom===h.pm_nom);
+                  // Cas 2 : la PM enregistrée existe et appartient à un groupe aujourd'hui
+                  const pmActuelle = pms.find(p=>norm(p.nom)===nomNorm);
                   if(pmActuelle&&pmActuelle.groupe_id){
                     groupeAssocie = pmGroupes.find(g=>g.id===pmActuelle.groupe_id);
                   }
@@ -2129,7 +2183,7 @@ function Main({cu,setCu,onLogout}){
 
       {/* ═══ STATS ═══ */}
       {tab==="stats"&&(
-        <StatsView history={history} blanchHistory={blanchHistory} setTab={setTab} setHFil={setHFil} setHFrom={setHFrom} setHTo={setHTo}/>
+        <StatsView history={history} blanchHistory={blanchHistory} pms={pms} pmGroupes={pmGroupes} setTab={setTab} setHFil={setHFil} setHFrom={setHFrom} setHTo={setHTo}/>
       )}
 
       {tab==="database"&&(
@@ -2317,7 +2371,7 @@ function Main({cu,setCu,onLogout}){
 }
 
 // ── Composant onglet Stats ──────────────────────────────────────────
-function StatsView({history,blanchHistory,setTab,setHFil,setHFrom,setHTo}){
+function StatsView({history,blanchHistory,pms,pmGroupes,setTab,setHFil,setHFrom,setHTo}){
   const [period,setPeriod]=useState("7"); // "today" | "7" | "30" | "total"
 
   // Calcul de la plage de dates LOCALES selon la période
@@ -2432,17 +2486,37 @@ function StatsView({history,blanchHistory,setTab,setHFil,setHFrom,setHTo}){
   ];
 
   // Top 5 PM
+  // Helper : retourne le nom de groupe associé à un nom de PM (rétroactif)
+  // Comparaison normalisée (insensible casse / espaces multiples)
+  const norm = s => (s||"").toLowerCase().trim().replace(/\s+/g," ");
+  function groupeForPMName(pmNom){
+    if(!pmNom||!pmGroupes||!pms) return null;
+    const nomNorm = norm(pmNom);
+    // Cas 1 : le nom enregistré correspond directement à un groupe existant
+    let g = pmGroupes.find(g=>norm(g.nom)===nomNorm);
+    if(g) return g;
+    // Cas 2 : la PM enregistrée existe et appartient à un groupe aujourd'hui
+    const pm = pms.find(p=>norm(p.nom)===nomNorm);
+    if(pm && pm.groupe_id) return pmGroupes.find(g=>g.id===pm.groupe_id);
+    return null;
+  }
+
   const topPM=useMemo(()=>{
     const map=new Map();
     txInPeriod.filter(h=>h.dest==="pm").forEach(h=>{
-      const key=h.pm_nom||"?";
-      if(!map.has(key))map.set(key,{nom:key,cat:h.pm_cat||"",total:0,count:0});
+      // Si la transaction est associée à un groupe (via le nom OU via la PM actuelle), on regroupe sous le groupe
+      const groupe = groupeForPMName(h.pm_nom);
+      const isGroupe = !!groupe;
+      const key = isGroupe ? "g:"+groupe.id : "p:"+(h.pm_nom||"?");
+      const displayNom = isGroupe ? groupe.nom : (h.pm_nom||"?");
+      if(!map.has(key))map.set(key,{nom:displayNom, cat: isGroupe ? "Groupe" : (h.pm_cat||""), total:0, count:0, isGroupe, drillNom: isGroupe ? groupe.nom : (h.pm_nom||"?")});
       const x=map.get(key);
       x.total+=(+h.total||0);
       x.count+=1;
     });
     return [...map.values()].sort((a,b)=>b.total-a.total).slice(0,5);
-  },[txInPeriod]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[txInPeriod,pms,pmGroupes]);
 
   // Top 5 Gangs
   const topGang=useMemo(()=>{
@@ -2467,14 +2541,17 @@ function StatsView({history,blanchHistory,setTab,setHFil,setHFrom,setHTo}){
     }
     return arr.map((r,i)=>(
       <div key={r.nom+i}
-        onClick={()=>goToHistory(dest,r.nom)}
+        onClick={()=>goToHistory(dest,r.drillNom||r.nom)}
         title={"Voir l'historique de "+r.nom}
         style={{display:"flex",alignItems:"center",gap:10,padding:"8px 8px",borderBottom:i<arr.length-1?"1px solid #404040":"none",cursor:"pointer",borderRadius:6,transition:"background .15s",margin:"0 -8px"}}
         onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.03)"}
         onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
         <div style={{width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:600,flexShrink:0,background:rankBgs[i],color:rankColors[i]}}>{i+1}</div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.nom}</div>
+          <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6}}>
+            {r.isGroupe&&<span style={{fontSize:11}}>👥</span>}
+            <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.nom}</span>
+          </div>
           <div style={{fontSize:10,color:C.muted}}>{r.cat||"—"} · {r.count} tx</div>
         </div>
         <div style={{textAlign:"right",flexShrink:0,display:"flex",alignItems:"center",gap:6}}>
