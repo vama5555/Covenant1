@@ -210,10 +210,69 @@ function Login({onLogin}){
   </div>;
 }
 
+// ── Gestion de la session persistante (24h) ──
+const SESSION_KEY = "covenant_session";
+const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 heures
+
+function saveSession(user){
+  try {
+    const session = { user, expiresAt: Date.now() + SESSION_DURATION_MS };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch(e) { /* localStorage indisponible : ignorer */ }
+}
+
+function loadSession(){
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if(!raw) return null;
+    const session = JSON.parse(raw);
+    if(!session || !session.user || !session.expiresAt) return null;
+    if(Date.now() > session.expiresAt){
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return session.user;
+  } catch(e){ return null; }
+}
+
+function clearSession(){
+  try { localStorage.removeItem(SESSION_KEY); } catch(e){}
+}
+
 export default function App(){
-  const [cu,setCu]=useState(null);
-  if(!cu) return <Login onLogin={setCu}/>;
-  return <Main cu={cu} setCu={setCu} onLogout={()=>setCu(null)}/>;
+  // Initialisation depuis la session persistante (24h)
+  const [cu,setCu]=useState(()=>loadSession());
+
+  // Wrapper qui sauvegarde la session quand on se connecte
+  const handleLogin = useCallback((user)=>{
+    saveSession(user);
+    setCu(user);
+  },[]);
+
+  // Wrapper qui nettoie la session à la déconnexion
+  const handleLogout = useCallback(()=>{
+    clearSession();
+    setCu(null);
+  },[]);
+
+  // Si l'utilisateur est mis à jour (changement de password par ex.) : refresh session
+  const handleUpdateCu = useCallback((updated)=>{
+    if(typeof updated === "function"){
+      setCu(prev=>{
+        const next = updated(prev);
+        if(next) saveSession(next);
+        else clearSession();
+        return next;
+      });
+    } else {
+      if(updated) saveSession(updated);
+      else clearSession();
+      setCu(updated);
+    }
+  },[]);
+
+  if(!cu) return <Login onLogin={handleLogin}/>;
+  return <Main cu={cu} setCu={handleUpdateCu} onLogout={handleLogout}/>;
 }
 
 // ── Détecte le séparateur CSV : si ';' présent dans la première ligne, c'est lui (Excel FR) ──
@@ -784,7 +843,21 @@ function Main({cu,setCu,onLogout}){
     setAuditLogs(al.data||[]);
     setBlanchHistory(bh.data||[]);
     setPMGroupes(pg.data||[]);
+    // Sécurité session : si l'utilisateur courant n'existe plus en BDD ou a changé de code, on le déconnecte
+    if(cu && u.data){
+      const userInBdd = u.data.find(x=>x.id===cu.id);
+      if(!userInBdd){
+        // utilisateur supprimé → on déconnecte
+        onLogout();
+        return;
+      }
+      // Sync les infos importantes (rôle, code) si elles ont changé en BDD
+      if(userInBdd.role!==cu.role || userInBdd.code!==cu.code || userInBdd.nom!==cu.nom){
+        setCu(prev=>({...prev, role:userInBdd.role, code:userInBdd.code, nom:userInBdd.nom}));
+      }
+    }
     setLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
   useEffect(()=>{loadAll();},[loadAll]);
