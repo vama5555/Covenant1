@@ -2147,6 +2147,7 @@ function Main({cu,setCu,onLogout}){
                 <div key={h.id} style={card}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div>
+                      {groupeAssocie&&<span style={{marginRight:6}}>👥</span>}
                       <span style={{fontWeight:700,fontSize:14,color:groupeAssocie?C.amber:C.text}} title={groupeAssocie?"Groupe":""}>{displayName}</span>
                       <span style={{fontWeight:700,fontSize:14,color:C.muted}}> ({displayCat})</span>
                       {h.membre&&<span style={{fontSize:12,color:C.muted,marginLeft:8}}>· payé par {h.membre}</span>}
