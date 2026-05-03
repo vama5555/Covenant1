@@ -530,17 +530,18 @@ function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
   const [numero,setNumero]=useState("");
   const [lieu,setLieu]=useState("");
   const [groupeId,setGroupeId]=useState("");
+  const canSubmit = !!(nom.trim() && catId);
   async function submit(){
-    if(!nom||!catId)return;
-    await onAdd({nom, categorie_id:catId, numero:numero||null, lieu_taff:lieu||null, groupe_id:groupeId||null});
+    if(!canSubmit)return;
+    await onAdd({nom:nom.trim(), categorie_id:catId, numero:numero||null, lieu_taff:lieu||null, groupe_id:groupeId||null});
     setNom(""); setCatId(""); setNumero(""); setLieu(""); setGroupeId("");
   }
   return (
     <>
       <div style={{display:"flex",flexDirection:"column",gap:8,borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          <div><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
-          <div><div style={S.lbl}>Catégorie</div><select style={S.inp} value={catId} onChange={e=>setCatId(e.target.value)}><option value="">—</option>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
+          <div><div style={S.lbl}>Nom <span style={{color:C.red}}>*</span></div><input style={S.inp} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+          <div><div style={S.lbl}>Catégorie <span style={{color:C.red}}>*</span></div><select style={S.inp} value={catId} onChange={e=>setCatId(e.target.value)}><option value="">—</option>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <div><div style={S.lbl}>Numéro <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><input style={S.inp} placeholder="Numéro" value={numero} onChange={e=>setNumero(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
@@ -548,7 +549,7 @@ function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
         </div>
         <div style={{display:"flex",gap:8,alignItems:"end"}}>
           <div style={{flex:1}}><div style={S.lbl}>Groupe <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><select style={S.inp} value={groupeId} onChange={e=>setGroupeId(e.target.value)}><option value="">— aucun groupe —</option>{(pmGroupes||[]).map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}</select></div>
-          <button onClick={submit} style={{fontWeight:700,color:C.green,padding:"7px 16px"}}>+ Ajouter</button>
+          <button onClick={submit} disabled={!canSubmit} title={canSubmit?"Ajouter cette PM":"Renseigne au moins le nom et la catégorie"} style={{fontWeight:700,color:canSubmit?C.green:C.dim,padding:"7px 16px",cursor:canSubmit?"pointer":"not-allowed",opacity:canSubmit?1:0.5}}>+ Ajouter</button>
         </div>
       </div>
       {!isAdmin&&<div style={{fontSize:10,color:C.muted,marginTop:6,fontStyle:"italic"}}>💡 Tu peux ajouter de nouvelles PM. La modification et la suppression sont réservées aux admins.</div>}
@@ -2135,17 +2136,19 @@ function Main({cu,setCu,onLogout}){
                   }
                 }
               }
-              const who=h.dest==="pm"?(h.pm_nom||"?")+" ("+(h.pm_cat||"?")+")": (h.gang_nom||"?")+" ("+(h.gang_cat||"?")+")";
               const tl=(h.types||[]).map(t=>t==="objets"?"Objets·"+(h.dest==="pm"?h.pm_pct:h.gang_pct)+"%":t==="liasses"?"Liasses·"+h.taux_liasse+"$":t==="argent"?"Argent·40%":"").filter(Boolean).join(" + ");
               const poidsObjetsH=(h.lignes||[]).reduce((s,l)=>s+(+l.poids||0),0);
               const poidsLiassesH = (+h.poids_liasses||0) || ((+h.liasse_qte||0)*0.1);
               const totPoidsH = poidsObjetsH + poidsLiassesH;
+              // Affichage du nom : si groupe lié, on affiche le nom ACTUEL du groupe en or, sinon le nom enregistré
+              const displayName = groupeAssocie ? groupeAssocie.nom : (h.dest==="pm" ? (h.pm_nom||"?") : (h.gang_nom||"?"));
+              const displayCat = h.dest==="pm" ? (h.pm_cat||"?") : (h.gang_cat||"?");
               return(
                 <div key={h.id} style={card}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div>
-                      <span style={{fontWeight:700,fontSize:14}}>{who}</span>
-                      {groupeAssocie&&<span title={"Groupe : "+groupeAssocie.nom} style={{display:"inline-block",marginLeft:8,fontSize:10,padding:"1px 7px",background:"rgba(227,185,74,0.12)",color:C.amber,border:"1px solid rgba(227,185,74,0.3)",borderRadius:10,fontWeight:600,verticalAlign:"middle"}}>👥 {groupeAssocie.nom}</span>}
+                      <span style={{fontWeight:700,fontSize:14,color:groupeAssocie?C.amber:C.text}} title={groupeAssocie?"Groupe":""}>{displayName}</span>
+                      <span style={{fontWeight:700,fontSize:14,color:C.muted}}> ({displayCat})</span>
                       {h.membre&&<span style={{fontSize:12,color:C.muted,marginLeft:8}}>· payé par {h.membre}</span>}
                       <div style={{fontSize:11,color:C.muted,marginTop:2}}>{tl}</div>
                     </div>
