@@ -1445,27 +1445,21 @@ function Main({cu,setCu,onLogout}){
         }
         return (
           <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"6px 8px",borderRadius:4}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                <span style={{fontSize:14,color:C.text,fontWeight:500}}>{p.nom}</span>
-                {groupe&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(227,185,74,0.12)",color:C.amber,border:"1px solid rgba(227,185,74,0.3)",borderRadius:10,fontWeight:600}}>👥 {groupe.nom}</span>}
-              </div>
-              {(p.numero||p.lieu_taff)&&(
-                <div style={{fontSize:11,color:C.dim,marginTop:2,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                  {p.numero&&(
-                    <button
-                      onClick={(e)=>{e.stopPropagation();navigator.clipboard?.writeText(p.numero);setCopied("tel:"+p.id);setTimeout(()=>setCopied(null),1500);}}
-                      title="Cliquer pour copier"
-                      style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+(copied==="tel:"+p.id?C.green:C.border),borderRadius:6,color:copied==="tel:"+p.id?C.green:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit",transition:"all .2s"}}
-                    >
-                      <span>📞</span>
-                      <span style={{fontFamily:"monospace",color:copied==="tel:"+p.id?C.green:C.text}}>{p.numero}</span>
-                      <span style={{fontSize:10,opacity:0.7}}>{copied==="tel:"+p.id?"✓":"⧉"}</span>
-                    </button>
-                  )}
-                  {p.lieu_taff&&<span>📍 {p.lieu_taff}</span>}
-                </div>
+            <div style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <span style={{fontSize:14,color:C.text,fontWeight:500}}>{p.nom}</span>
+              {groupe&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(227,185,74,0.12)",color:C.amber,border:"1px solid rgba(227,185,74,0.3)",borderRadius:10,fontWeight:600}}>👥 {groupe.nom}</span>}
+              {p.numero&&(
+                <button
+                  onClick={(e)=>{e.stopPropagation();navigator.clipboard?.writeText(p.numero);setCopied("tel:"+p.id);setTimeout(()=>setCopied(null),1500);}}
+                  title="Cliquer pour copier"
+                  style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",background:C.surfaceAlt,border:"1px solid "+(copied==="tel:"+p.id?C.green:C.border),borderRadius:6,color:copied==="tel:"+p.id?C.green:C.muted,fontSize:11,cursor:"pointer",fontFamily:"inherit",transition:"all .2s"}}
+                >
+                  <span>📞</span>
+                  <span style={{fontFamily:"monospace",color:copied==="tel:"+p.id?C.green:C.text}}>{p.numero}</span>
+                  <span style={{fontSize:10,opacity:0.7}}>{copied==="tel:"+p.id?"✓":"⧉"}</span>
+                </button>
               )}
+              {p.lieu_taff&&<span style={{fontSize:11,color:C.dim,display:"inline-flex",alignItems:"center",gap:3}}>📍 {p.lieu_taff}</span>}
             </div>
             <span style={{fontSize:11,color:C.muted,flexShrink:0}}>{cat?.nom||"?"}</span>
             {isAdmin&&<>
