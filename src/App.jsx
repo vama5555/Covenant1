@@ -618,18 +618,23 @@ const AddPMForm = memo(function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
           <div><div style={S.lbl}>Numéro <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><input style={S.inp} placeholder="Numéro" value={numero} onChange={e=>setNumero(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
           <div><div style={S.lbl}>Lieu de taff <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><input style={S.inp} placeholder="Lieu" value={lieu} onChange={e=>setLieu(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
         </div>
-        <div>
-          <div style={S.lbl}>📝 Note <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div>
-          <textarea
-            placeholder="Notes libres : disponibilités, préférences, infos diverses..."
-            value={note}
-            onChange={e=>setNote(e.target.value)}
-            rows={2}
-            style={{width:"100%",fontSize:12,padding:"7px 10px",resize:"vertical",fontFamily:"inherit",minHeight:48}}
-          />
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,alignItems:"end"}}>
+          <div>
+            <div style={S.lbl}>Groupe <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div>
+            <select style={S.inp} value={groupeId} onChange={e=>setGroupeId(e.target.value)}><option value="">— aucun groupe —</option>{(pmGroupes||[]).map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}</select>
+          </div>
+          <div>
+            <div style={S.lbl}>Note <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div>
+            <input
+              style={S.inp}
+              placeholder="Note libre…"
+              value={note}
+              onChange={e=>setNote(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&submit()}
+            />
+          </div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"end"}}>
-          <div style={{flex:1}}><div style={S.lbl}>Groupe <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><select style={S.inp} value={groupeId} onChange={e=>setGroupeId(e.target.value)}><option value="">— aucun groupe —</option>{(pmGroupes||[]).map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}</select></div>
+        <div style={{display:"flex",justifyContent:"flex-end"}}>
           <button onClick={submit} disabled={!canSubmit} title={canSubmit?"Ajouter cette PM":"Renseigne au moins le nom et la catégorie"} style={{fontWeight:700,color:canSubmit?C.green:C.dim,padding:"7px 16px",cursor:canSubmit?"pointer":"not-allowed",opacity:canSubmit?1:0.5}}>+ Ajouter</button>
         </div>
       </div>
@@ -727,12 +732,11 @@ function EditPMForm({pm,catsPM,pmGroupes,onSave,onCancel}){
           {pmGroupes.map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}
         </select>
       </div>
-      <textarea
-        placeholder="📝 Note libre (optionnel) : disponibilités, préférences, infos diverses..."
+      <input
+        placeholder="Note libre (optionnel)"
         value={note}
         onChange={e=>setNote(e.target.value)}
-        rows={2}
-        style={{width:"100%",fontSize:12,padding:"7px 10px",resize:"vertical",fontFamily:"inherit",minHeight:48}}
+        onKeyDown={e=>e.key==="Enter"&&handleSave()}
       />
       <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
         <button onClick={onCancel} style={{fontSize:11,color:C.muted}}>Annuler</button>
