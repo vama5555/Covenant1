@@ -690,6 +690,36 @@ function EditGroupeForm({groupe,onSave,onCancel}){
   );
 }
 
+// Composant stable pour la barre de recherche PM (hors de Main pour éviter perte de focus)
+const PMSearchInput = memo(function PMSearchInput({initialValue,onChange}){
+  const [val,setVal]=useState(initialValue||"");
+  const onChangeRef = useRef(onChange);
+  useEffect(()=>{onChangeRef.current = onChange;});
+  // Notifier le parent à chaque changement (debounce léger via useEffect)
+  useEffect(()=>{
+    const t = setTimeout(()=>{ onChangeRef.current(val); }, 100);
+    return ()=>clearTimeout(t);
+  },[val]);
+  return (
+    <div style={{position:"relative",flex:1}}>
+      <input
+        type="text"
+        placeholder="🔍 Rechercher par nom, numéro ou lieu..."
+        value={val}
+        onChange={e=>setVal(e.target.value)}
+        style={{width:"100%",fontSize:12,padding:"6px 10px"}}
+      />
+      {val&&(
+        <button
+          onClick={()=>setVal("")}
+          title="Effacer la recherche"
+          style={{position:"absolute",right:4,top:"50%",transform:"translateY(-50%)",fontSize:11,padding:"2px 8px",border:"none",background:"transparent",color:C.muted,cursor:"pointer"}}
+        >×</button>
+      )}
+    </div>
+  );
+}, () => true); // Jamais re-render depuis le parent : le state est totalement local
+
 function Main({cu,setCu,onLogout}){
   const isAdmin=cu.role==="admin";
   const [tab,setTab]=useState("dashboard");
@@ -1449,22 +1479,7 @@ function Main({cu,setCu,onLogout}){
     const visible = showAll.pms ? filteredPMs : filteredPMs.slice(0,PREVIEW);
     return <>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-        <div style={{position:"relative",flex:1}}>
-          <input
-            type="text"
-            placeholder="🔍 Rechercher par nom, numéro ou lieu..."
-            value={pmSearch}
-            onChange={e=>setPMSearch(e.target.value)}
-            style={{width:"100%",fontSize:12,padding:"6px 10px"}}
-          />
-          {pmSearch&&(
-            <button
-              onClick={()=>setPMSearch("")}
-              title="Effacer la recherche"
-              style={{position:"absolute",right:4,top:"50%",transform:"translateY(-50%)",fontSize:11,padding:"2px 8px",border:"none",background:"transparent",color:C.muted,cursor:"pointer"}}
-            >×</button>
-          )}
-        </div>
+        <PMSearchInput initialValue={pmSearch} onChange={setPMSearch}/>
         <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
         {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
       </div>
