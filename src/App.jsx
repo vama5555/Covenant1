@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, memo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://ppaokymwkazzwwdzjmdb.supabase.co";
@@ -524,16 +524,20 @@ function AppartCard({a,updateAppart,copied,setCopied}){
 }
 
 // ── Formulaires d'ajout STABLES (hors de Main) pour préserver le focus malgré Realtime ──
-function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
+const AddPMForm = memo(function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
   const [nom,setNom]=useState("");
   const [catId,setCatId]=useState("");
   const [numero,setNumero]=useState("");
   const [lieu,setLieu]=useState("");
   const [groupeId,setGroupeId]=useState("");
+  // On garde la dernière version de onAdd dans une ref pour qu'elle soit toujours à jour
+  // sans déclencher de re-render quand le parent re-render
+  const onAddRef = useRef(onAdd);
+  useEffect(()=>{onAddRef.current = onAdd;});
   const canSubmit = !!(nom.trim() && catId);
   async function submit(){
     if(!canSubmit)return;
-    await onAdd({nom:nom.trim(), categorie_id:catId, numero:numero||null, lieu_taff:lieu||null, groupe_id:groupeId||null});
+    await onAddRef.current({nom:nom.trim(), categorie_id:catId, numero:numero||null, lieu_taff:lieu||null, groupe_id:groupeId||null});
     setNom(""); setCatId(""); setNumero(""); setLieu(""); setGroupeId("");
   }
   return (
@@ -555,7 +559,14 @@ function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
       {!isAdmin&&<div style={{fontSize:10,color:C.muted,marginTop:6,fontStyle:"italic"}}>💡 Tu peux ajouter de nouvelles PM. La modification et la suppression sont réservées aux admins.</div>}
     </>
   );
-}
+}, (prev, next) => {
+  // Ignorer onAdd dans la comparaison (toujours géré via ref)
+  // Re-render seulement si les listes changent vraiment
+  if(prev.isAdmin !== next.isAdmin) return false;
+  if(prev.catsPM !== next.catsPM) return false;
+  if(prev.pmGroupes !== next.pmGroupes) return false;
+  return true; // pas de re-render
+});
 
 function AddGangForm({catsGang,onAdd}){
   const [nom,setNom]=useState("");
