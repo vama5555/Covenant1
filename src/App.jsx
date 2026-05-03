@@ -925,11 +925,16 @@ function Main({cu,setCu,onLogout}){
     const mb=members.find(m=>m.id===tx.membreId)||null;
     // Nom enregistré : si groupe sélectionné, on prend le nom du groupe
     const pmNomFinal = tx.dest==="pm" ? (selGroupe ? selGroupe.nom : (selPM ? selPM.nom : null)) : null;
+    // IDs pour rattachement persistant (résiste aux renommages)
+    const pmIdFinal = tx.dest==="pm" && selPM ? selPM.id : null;
+    const groupeIdFinal = tx.dest==="pm" ? (selGroupe ? selGroupe.id : (selPM && selPM.groupe_id ? selPM.groupe_id : null)) : null;
     const payload={
       dest:tx.dest, types, date:tx.date, note:tx.note, total:txTotal,
       pm_nom:pmNomFinal,
       pm_cat:tx.dest==="pm"&&selCatPM?selCatPM.nom:null,
       pm_pct:tx.dest==="pm"?aPct:null,
+      pm_id:pmIdFinal,
+      groupe_id:groupeIdFinal,
       gang_nom:tx.dest==="gang"&&selGang?selGang.nom:null,
       gang_cat:tx.dest==="gang"&&selCatG?selCatG.nom:null,
       gang_pct:tx.dest==="gang"?aPct:null,
@@ -1009,35 +1014,42 @@ function Main({cu,setCu,onLogout}){
   // Helper : noms à matcher pour un filtre donné (résout les groupes en leurs membres)
   const norm = s => (s||"").toLowerCase().trim().replace(/\s+/g," ");
   const filtH=useMemo(()=>{
-    let matchNames = null; // null = pas de filtre par nom
+    let matchFilter = null; // null = pas de filtre
     if(hFil.who){
       const [dest,...rest] = hFil.who.split(":");
       const nom = rest.join(":");
-      // Si c'est un nom de groupe : matcher toutes les PM du groupe + le nom du groupe lui-même
+      // Si c'est un nom de groupe : on matche par ID du groupe + noms des PM du groupe
       const groupe = dest==="pm" ? pmGroupes.find(g=>norm(g.nom)===norm(nom)) : null;
       if(groupe){
         const memberNames = pms.filter(p=>p.groupe_id===groupe.id).map(p=>norm(p.nom));
-        matchNames = {dest, names:new Set([norm(groupe.nom), ...memberNames])};
+        const memberIds = pms.filter(p=>p.groupe_id===groupe.id).map(p=>p.id);
+        matchFilter = {dest, groupeId:groupe.id, pmIds:new Set(memberIds), names:new Set([norm(groupe.nom), ...memberNames])};
       } else {
-        // Sinon : on regarde aussi si la PM nommée appartient à un groupe (et on étend le filtre)
+        // Sinon : si la PM nommée appartient à un groupe → étendre au groupe
         if(dest==="pm"){
           const pm = pms.find(p=>norm(p.nom)===norm(nom));
           if(pm && pm.groupe_id){
             const grp = pmGroupes.find(g=>g.id===pm.groupe_id);
             if(grp){
               const memberNames = pms.filter(p=>p.groupe_id===grp.id).map(p=>norm(p.nom));
-              matchNames = {dest, names:new Set([norm(grp.nom), ...memberNames])};
+              const memberIds = pms.filter(p=>p.groupe_id===grp.id).map(p=>p.id);
+              matchFilter = {dest, groupeId:grp.id, pmIds:new Set(memberIds), names:new Set([norm(grp.nom), ...memberNames])};
             }
           }
         }
-        if(!matchNames) matchNames = {dest, names:new Set([norm(nom)])};
+        if(!matchFilter) matchFilter = {dest, groupeId:null, pmIds:new Set(), names:new Set([norm(nom)])};
       }
     }
     return history.filter(h=>{
-      if(matchNames){
-        if(h.dest!==matchNames.dest) return false;
+      if(matchFilter){
+        if(h.dest!==matchFilter.dest) return false;
+        // Match par ID groupe (le plus fiable)
+        if(matchFilter.groupeId && h.groupe_id===matchFilter.groupeId) return h.date>=hFrom&&h.date<=hTo;
+        // Match par ID PM (deuxième plus fiable)
+        if(h.pm_id && matchFilter.pmIds.has(h.pm_id)) return h.date>=hFrom&&h.date<=hTo;
+        // Fallback : match par nom
         const n=h.dest==="pm"?norm(h.pm_nom||""):norm(h.gang_nom||"");
-        if(!matchNames.names.has(n)) return false;
+        if(!matchFilter.names.has(n)) return false;
       }
       return h.date>=hFrom&&h.date<=hTo;
     });
@@ -2096,20 +2108,30 @@ function Main({cu,setCu,onLogout}){
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {filtH.map(h=>{
               const exp=!!expanded[h.id];
-              // Détecter si la transaction est liée à un groupe (rétroactif)
-              // Comparaison normalisée (insensible à casse/espaces multiples) pour matcher
-              // les vieux noms type "Valtid + pote" avec un groupe créé après
+              // Détecter le groupe associé : priorité aux IDs (fiable) puis fallback sur le nom
               const norm = s => (s||"").toLowerCase().trim().replace(/\s+/g," ");
               let groupeAssocie = null;
-              if(h.dest==="pm"&&h.pm_nom){
-                const nomNorm = norm(h.pm_nom);
-                // Cas 1 : le nom enregistré correspond directement à un groupe existant
-                groupeAssocie = pmGroupes.find(g=>norm(g.nom)===nomNorm);
-                if(!groupeAssocie){
-                  // Cas 2 : la PM enregistrée existe et appartient à un groupe aujourd'hui
-                  const pmActuelle = pms.find(p=>norm(p.nom)===nomNorm);
-                  if(pmActuelle&&pmActuelle.groupe_id){
+              if(h.dest==="pm"){
+                // Priorité 1 : groupe_id stocké directement dans la transaction (fiable, résiste aux renommages)
+                if(h.groupe_id){
+                  groupeAssocie = pmGroupes.find(g=>g.id===h.groupe_id);
+                }
+                // Priorité 2 : pm_id stocké → on regarde si la PM est dans un groupe actuellement
+                if(!groupeAssocie && h.pm_id){
+                  const pmActuelle = pms.find(p=>p.id===h.pm_id);
+                  if(pmActuelle && pmActuelle.groupe_id){
                     groupeAssocie = pmGroupes.find(g=>g.id===pmActuelle.groupe_id);
+                  }
+                }
+                // Priorité 3 (fallback rétrocompat) : matching par nom
+                if(!groupeAssocie && h.pm_nom){
+                  const nomNorm = norm(h.pm_nom);
+                  groupeAssocie = pmGroupes.find(g=>norm(g.nom)===nomNorm);
+                  if(!groupeAssocie){
+                    const pmActuelle = pms.find(p=>norm(p.nom)===nomNorm);
+                    if(pmActuelle && pmActuelle.groupe_id){
+                      groupeAssocie = pmGroupes.find(g=>g.id===pmActuelle.groupe_id);
+                    }
                   }
                 }
               }
@@ -2486,26 +2508,40 @@ function StatsView({history,blanchHistory,pms,pmGroupes,setTab,setHFil,setHFrom,
   ];
 
   // Top 5 PM
-  // Helper : retourne le nom de groupe associé à un nom de PM (rétroactif)
-  // Comparaison normalisée (insensible casse / espaces multiples)
+  // Helper : retourne le groupe associé à une transaction (priorité aux IDs)
+  // Comparaison normalisée pour fallback nom (insensible casse / espaces multiples)
   const norm = s => (s||"").toLowerCase().trim().replace(/\s+/g," ");
-  function groupeForPMName(pmNom){
-    if(!pmNom||!pmGroupes||!pms) return null;
-    const nomNorm = norm(pmNom);
-    // Cas 1 : le nom enregistré correspond directement à un groupe existant
-    let g = pmGroupes.find(g=>norm(g.nom)===nomNorm);
-    if(g) return g;
-    // Cas 2 : la PM enregistrée existe et appartient à un groupe aujourd'hui
-    const pm = pms.find(p=>norm(p.nom)===nomNorm);
-    if(pm && pm.groupe_id) return pmGroupes.find(g=>g.id===pm.groupe_id);
+  function groupeForTx(h){
+    if(!pmGroupes||!pms||h.dest!=="pm") return null;
+    // Priorité 1 : groupe_id direct
+    if(h.groupe_id){
+      const g = pmGroupes.find(x=>x.id===h.groupe_id);
+      if(g) return g;
+    }
+    // Priorité 2 : pm_id → groupe actuel de cette PM
+    if(h.pm_id){
+      const pm = pms.find(p=>p.id===h.pm_id);
+      if(pm && pm.groupe_id){
+        const g = pmGroupes.find(x=>x.id===pm.groupe_id);
+        if(g) return g;
+      }
+    }
+    // Priorité 3 (fallback) : matching par nom
+    if(h.pm_nom){
+      const nomNorm = norm(h.pm_nom);
+      let g = pmGroupes.find(x=>norm(x.nom)===nomNorm);
+      if(g) return g;
+      const pm = pms.find(p=>norm(p.nom)===nomNorm);
+      if(pm && pm.groupe_id) return pmGroupes.find(x=>x.id===pm.groupe_id);
+    }
     return null;
   }
 
   const topPM=useMemo(()=>{
     const map=new Map();
     txInPeriod.filter(h=>h.dest==="pm").forEach(h=>{
-      // Si la transaction est associée à un groupe (via le nom OU via la PM actuelle), on regroupe sous le groupe
-      const groupe = groupeForPMName(h.pm_nom);
+      // Si la transaction est associée à un groupe (via IDs ou nom), on regroupe sous le groupe
+      const groupe = groupeForTx(h);
       const isGroupe = !!groupe;
       const key = isGroupe ? "g:"+groupe.id : "p:"+(h.pm_nom||"?");
       const displayNom = isGroupe ? groupe.nom : (h.pm_nom||"?");
