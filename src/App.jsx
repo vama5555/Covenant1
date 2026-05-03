@@ -317,16 +317,23 @@ function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
           <div style={{maxHeight:380,overflowY:"auto",paddingRight:4}}>
             {filtered.length===0
               ?<div style={{textAlign:"center",padding:30,color:C.muted,fontSize:11,fontStyle:"italic"}}>Aucun item trouvé</div>
-              :filtered.map(it=>(
+              :filtered.map(it=>{
+                // Prix payé PM = prix de revente × % de la PM
+                const prixPM = pct>0 ? Math.round(it.prix * pct / 100) : null;
+                return (
                 <div key={it.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
                   <span style={{flex:1,fontSize:13,color:C.text}}>
                     {it.nom}
-                    <span style={{fontSize:11,color:C.muted,marginLeft:5}}>({fmt(it.prix)}{it.poids>0&&" · "+fmtKgD(it.poids)})</span>
+                    <span style={{fontSize:11,color:C.muted,marginLeft:5}}>
+                      ({prixPM!==null ? <span style={{color:C.green,fontWeight:600}}>{fmt(prixPM)}</span> : <span style={{fontStyle:"italic"}}>choisir une PM</span>}
+                      {it.poids>0&&" · "+fmtKgD(it.poids)})
+                    </span>
                   </span>
                   <input type="number" min="0" placeholder="0" value={qtes[it.id]||""} onChange={e=>onChangeQte(it.id,e.target.value)}
                     style={{width:72,textAlign:"center"}}/>
                 </div>
-              ))
+                );
+              })
             }
           </div>
         </div>
@@ -556,7 +563,6 @@ const AddPMForm = memo(function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
           <button onClick={submit} disabled={!canSubmit} title={canSubmit?"Ajouter cette PM":"Renseigne au moins le nom et la catégorie"} style={{fontWeight:700,color:canSubmit?C.green:C.dim,padding:"7px 16px",cursor:canSubmit?"pointer":"not-allowed",opacity:canSubmit?1:0.5}}>+ Ajouter</button>
         </div>
       </div>
-      {!isAdmin&&<div style={{fontSize:10,color:C.muted,marginTop:6,fontStyle:"italic"}}>💡 Tu peux ajouter de nouvelles PM. La modification et la suppression sont réservées aux admins.</div>}
     </>
   );
 }, (prev, next) => {
