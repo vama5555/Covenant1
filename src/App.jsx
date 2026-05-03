@@ -596,6 +596,7 @@ const AddPMForm = memo(function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
   const [numero,setNumero]=useState("");
   const [lieu,setLieu]=useState("");
   const [groupeId,setGroupeId]=useState("");
+  const [note,setNote]=useState("");
   // On garde la dernière version de onAdd dans une ref pour qu'elle soit toujours à jour
   // sans déclencher de re-render quand le parent re-render
   const onAddRef = useRef(onAdd);
@@ -603,8 +604,8 @@ const AddPMForm = memo(function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
   const canSubmit = !!(nom.trim() && catId);
   async function submit(){
     if(!canSubmit)return;
-    await onAddRef.current({nom:nom.trim(), categorie_id:catId, numero:numero||null, lieu_taff:lieu||null, groupe_id:groupeId||null});
-    setNom(""); setCatId(""); setNumero(""); setLieu(""); setGroupeId("");
+    await onAddRef.current({nom:nom.trim(), categorie_id:catId, numero:numero||null, lieu_taff:lieu||null, groupe_id:groupeId||null, note:note||null});
+    setNom(""); setCatId(""); setNumero(""); setLieu(""); setGroupeId(""); setNote("");
   }
   return (
     <>
@@ -616,6 +617,16 @@ const AddPMForm = memo(function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           <div><div style={S.lbl}>Numéro <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><input style={S.inp} placeholder="Numéro" value={numero} onChange={e=>setNumero(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
           <div><div style={S.lbl}>Lieu de taff <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><input style={S.inp} placeholder="Lieu" value={lieu} onChange={e=>setLieu(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+        </div>
+        <div>
+          <div style={S.lbl}>📝 Note <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div>
+          <textarea
+            placeholder="Notes libres : disponibilités, préférences, infos diverses..."
+            value={note}
+            onChange={e=>setNote(e.target.value)}
+            rows={2}
+            style={{width:"100%",fontSize:12,padding:"7px 10px",resize:"vertical",fontFamily:"inherit",minHeight:48}}
+          />
         </div>
         <div style={{display:"flex",gap:8,alignItems:"end"}}>
           <div style={{flex:1}}><div style={S.lbl}>Groupe <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><select style={S.inp} value={groupeId} onChange={e=>setGroupeId(e.target.value)}><option value="">— aucun groupe —</option>{(pmGroupes||[]).map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}</select></div>
@@ -695,8 +706,9 @@ function EditPMForm({pm,catsPM,pmGroupes,onSave,onCancel}){
   const [lieu,setLieu]=useState(pm.lieu_taff||"");
   const [catId,setCatId]=useState(pm.categorie_id||"");
   const [groupeId,setGroupeId]=useState(pm.groupe_id||"");
+  const [note,setNote]=useState(pm.note||"");
   function handleSave(){
-    onSave({...pm, nom, numero:numero||null, lieu_taff:lieu||null, categorie_id:catId, groupe_id:groupeId||null});
+    onSave({...pm, nom, numero:numero||null, lieu_taff:lieu||null, categorie_id:catId, groupe_id:groupeId||null, note:note||null});
   }
   return (
     <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10,padding:"10px 12px",background:C.surfaceAlt,borderRadius:6}}>
@@ -715,6 +727,13 @@ function EditPMForm({pm,catsPM,pmGroupes,onSave,onCancel}){
           {pmGroupes.map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}
         </select>
       </div>
+      <textarea
+        placeholder="📝 Note libre (optionnel) : disponibilités, préférences, infos diverses..."
+        value={note}
+        onChange={e=>setNote(e.target.value)}
+        rows={2}
+        style={{width:"100%",fontSize:12,padding:"7px 10px",resize:"vertical",fontFamily:"inherit",minHeight:48}}
+      />
       <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
         <button onClick={onCancel} style={{fontSize:11,color:C.muted}}>Annuler</button>
         <button onClick={handleSave} style={{fontSize:11,color:C.green,fontWeight:700}}>OK</button>
@@ -769,7 +788,7 @@ const PMSearchInput = memo(function PMSearchInput({initialValue,onChange}){
     <div style={{position:"relative",flex:1}}>
       <input
         type="text"
-        placeholder="🔍 Rechercher par nom, numéro ou lieu..."
+        placeholder="🔍 Rechercher par nom, numéro, lieu ou note..."
         value={val}
         onChange={e=>setVal(e.target.value)}
         style={{width:"100%",fontSize:12,padding:"6px 10px"}}
@@ -1506,7 +1525,7 @@ function Main({cu,setCu,onLogout}){
   function PMList(){
     async function save(p){
       const before=pms.find(x=>x.id===p.id);
-      await sb.from("pms").update({nom:p.nom,categorie_id:p.categorie_id,numero:p.numero||null,lieu_taff:p.lieu_taff||null,groupe_id:p.groupe_id||null}).eq("id",p.id);
+      await sb.from("pms").update({nom:p.nom,categorie_id:p.categorie_id,numero:p.numero||null,lieu_taff:p.lieu_taff||null,groupe_id:p.groupe_id||null,note:p.note||null}).eq("id",p.id);
       setPMs(ps=>ps.map(x=>x.id===p.id?p:x));setEPM(null);
       if(before){
         const ch=[];
@@ -1523,6 +1542,7 @@ function Main({cu,setCu,onLogout}){
           const newGr=pmGroupes.find(g=>g.id===p.groupe_id)?.nom||"—";
           ch.push(`groupe : ${diff(oldGr,newGr)}`);
         }
+        if((before.note||"")!==(p.note||"")) ch.push(`note ${before.note?"modifiée":"ajoutée"}`);
         if(ch.length>0) log("items","pm_update",`a modifié la PM <b>${p.nom}</b> · ${ch.join(" · ")}`);
       }
     }
@@ -1536,6 +1556,7 @@ function Main({cu,setCu,onLogout}){
         if(data.numero) extras.push(`📞 ${data.numero}`);
         if(data.lieu_taff) extras.push(`📍 ${data.lieu_taff}`);
         if(groupe) extras.push(`👥 ${groupe}`);
+        if(data.note) extras.push(`📝 note`);
         log("items","pm_create",`a créé la PM <b>${data.nom}</b> (catégorie : ${cat}${extras.length?" · "+extras.join(" · "):""})`);
       }
     }
@@ -1552,7 +1573,8 @@ function Main({cu,setCu,onLogout}){
           const nomMatch = (p.nom||"").toLowerCase().includes(searchLower);
           const numMatch = (p.numero||"").toLowerCase().includes(searchLower);
           const lieuMatch = (p.lieu_taff||"").toLowerCase().includes(searchLower);
-          return nomMatch || numMatch || lieuMatch;
+          const noteMatch = (p.note||"").toLowerCase().includes(searchLower);
+          return nomMatch || numMatch || lieuMatch || noteMatch;
         })
       : pms;
     const visible = showAll.pms ? filteredPMs : filteredPMs.slice(0,PREVIEW);
@@ -1595,6 +1617,16 @@ function Main({cu,setCu,onLogout}){
                 </button>
               )}
               {p.lieu_taff&&<span style={{fontSize:11,color:C.dim,display:"inline-flex",alignItems:"center",gap:3}}>📍 {p.lieu_taff}</span>}
+              {p.note&&(
+                <button
+                  onClick={(e)=>{e.stopPropagation();setEPM(p.id);}}
+                  title={p.note}
+                  style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 7px",background:"rgba(227,185,74,0.10)",border:"1px solid rgba(227,185,74,0.3)",borderRadius:6,color:C.amber,fontSize:11,cursor:"pointer",fontFamily:"inherit",transition:"all .2s"}}
+                >
+                  <span>📝</span>
+                  <span style={{fontSize:10}}>note</span>
+                </button>
+              )}
             </div>
             <span style={{fontSize:11,color:C.muted,flexShrink:0}}>{cat?.nom||"?"}</span>
             <button onClick={()=>setEPM(p.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
@@ -2358,19 +2390,19 @@ function Main({cu,setCu,onLogout}){
 
       {tab==="database"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          {/* Ligne 1 : Catégories PM + Petites mains */}
+          {/* Ligne 1 : Petites mains (pleine largeur, en premier) */}
+          <div style={card}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:14}}>
+              <div style={{...S.sec,margin:0,flexShrink:0}}>Petites mains</div>
+              <PMSearchInput initialValue={pmSearch} onChange={setPMSearch}/>
+            </div>
+            <PMList/>
+          </div>
+          {/* Ligne 2 : Catégories PM + Groupes PM côte à côte */}
           <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             <div style={card}><div style={S.sec}>Catégories PM</div><CatTable cats={catsPM} setCats={setCatsPM} table="categories_pm" eId={eCPM} setEId={setECPM} nc={nCPM} setNc={setNCPM}/></div>
-            <div style={card}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:14}}>
-                <div style={{...S.sec,margin:0,flexShrink:0}}>Petites mains</div>
-                <PMSearchInput initialValue={pmSearch} onChange={setPMSearch}/>
-              </div>
-              <PMList/>
-            </div>
+            <div style={card}><div style={S.sec}>Groupes PM</div><GroupeList/></div>
           </div>
-          {/* Ligne 2 : Groupes PM (pleine largeur) */}
-          <div style={card}><div style={S.sec}>Groupes PM</div><GroupeList/></div>
           {/* Ligne 3 : Catégories gangs + Gangs */}
           <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             <div style={card}><div style={S.sec}>Catégories gangs</div><CatTable cats={catsGang} setCats={setCatsGang} table="categories_gang" eId={eCG} setEId={setECG} nc={nCG} setNc={setNCG}/></div>
