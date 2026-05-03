@@ -524,20 +524,32 @@ function AppartCard({a,updateAppart,copied,setCopied}){
 }
 
 // ── Formulaires d'ajout STABLES (hors de Main) pour préserver le focus malgré Realtime ──
-function AddPMForm({catsPM,onAdd,isAdmin}){
+function AddPMForm({catsPM,pmGroupes,onAdd,isAdmin}){
   const [nom,setNom]=useState("");
   const [catId,setCatId]=useState("");
+  const [numero,setNumero]=useState("");
+  const [lieu,setLieu]=useState("");
+  const [groupeId,setGroupeId]=useState("");
   async function submit(){
     if(!nom||!catId)return;
-    await onAdd(nom,catId);
-    setNom(""); setCatId("");
+    await onAdd({nom, categorie_id:catId, numero:numero||null, lieu_taff:lieu||null, groupe_id:groupeId||null});
+    setNom(""); setCatId(""); setNumero(""); setLieu(""); setGroupeId("");
   }
   return (
     <>
-      <div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
-        <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
-        <div><div style={S.lbl}>Catégorie</div><select value={catId} onChange={e=>setCatId(e.target.value)}><option value="">—</option>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
-        <button onClick={submit} style={{fontWeight:700,color:C.green}}>+ Ajouter</button>
+      <div style={{display:"flex",flexDirection:"column",gap:8,borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div><div style={S.lbl}>Nom</div><input style={S.inp} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+          <div><div style={S.lbl}>Catégorie</div><select style={S.inp} value={catId} onChange={e=>setCatId(e.target.value)}><option value="">—</option>{catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div><div style={S.lbl}>Numéro <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><input style={S.inp} placeholder="Numéro" value={numero} onChange={e=>setNumero(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+          <div><div style={S.lbl}>Lieu de taff <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><input style={S.inp} placeholder="Lieu" value={lieu} onChange={e=>setLieu(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"end"}}>
+          <div style={{flex:1}}><div style={S.lbl}>Groupe <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div><select style={S.inp} value={groupeId} onChange={e=>setGroupeId(e.target.value)}><option value="">— aucun groupe —</option>{(pmGroupes||[]).map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}</select></div>
+          <button onClick={submit} style={{fontWeight:700,color:C.green,padding:"7px 16px"}}>+ Ajouter</button>
+        </div>
       </div>
       {!isAdmin&&<div style={{fontSize:10,color:C.muted,marginTop:6,fontStyle:"italic"}}>💡 Tu peux ajouter de nouvelles PM. La modification et la suppression sont réservées aux admins.</div>}
     </>
@@ -855,8 +867,8 @@ function Main({cu,setCu,onLogout}){
   // ── Gestion PM/Groupes : un id préfixé "g:" indique un groupe, sinon c'est une PM normale ──
   // Liste fusionnée PM + Groupes pour le sélecteur Transactions
   const pmsAndGroupes = useMemo(()=>{
-    // PM individuelles (toutes, même celles dans un groupe — choix utilisateur "afficher tout")
-    const pmList = pms.map(p=>({type:"pm", id:p.id, value:p.id, label:p.nom, pm:p, categorie_id:p.categorie_id}));
+    // PM individuelles SOLO uniquement (celles qui n'appartiennent à aucun groupe)
+    const pmList = pms.filter(p=>!p.groupe_id).map(p=>({type:"pm", id:p.id, value:p.id, label:p.nom, pm:p, categorie_id:p.categorie_id}));
     // Groupes (avec catégorie héritée = la plus haute des PM membres)
     const groupList = pmGroupes.map(g=>{
       const membres = pms.filter(p=>p.groupe_id===g.id);
@@ -1328,12 +1340,17 @@ function Main({cu,setCu,onLogout}){
         if(ch.length>0) log("items","pm_update",`a modifié la PM <b>${p.nom}</b> · ${ch.join(" · ")}`);
       }
     }
-    async function add(nom,catId){
-      const{data}=await sb.from("pms").insert({nom,categorie_id:catId}).select().single();
+    async function add(payload){
+      const{data}=await sb.from("pms").insert(payload).select().single();
       if(data){
         setPMs(p=>[...p,data]);
         const cat=catsPM.find(c=>c.id===data.categorie_id)?.nom||"?";
-        log("items","pm_create",`a créé la PM <b>${data.nom}</b> (catégorie : ${cat})`);
+        const groupe=pmGroupes.find(g=>g.id===data.groupe_id)?.nom;
+        const extras=[];
+        if(data.numero) extras.push(`📞 ${data.numero}`);
+        if(data.lieu_taff) extras.push(`📍 ${data.lieu_taff}`);
+        if(groupe) extras.push(`👥 ${groupe}`);
+        log("items","pm_create",`a créé la PM <b>${data.nom}</b> (catégorie : ${cat}${extras.length?" · "+extras.join(" · "):""})`);
       }
     }
     async function del(id){
@@ -1391,7 +1408,7 @@ function Main({cu,setCu,onLogout}){
         </button>
       )}
       {/* Ajout autorisé pour TOUS (admin et membre) — composant stable hors de Main */}
-      <AddPMForm catsPM={catsPM} onAdd={add} isAdmin={isAdmin}/>
+      <AddPMForm catsPM={catsPM} pmGroupes={pmGroupes} onAdd={add} isAdmin={isAdmin}/>
     </>;
   }
 
@@ -2029,6 +2046,19 @@ function Main({cu,setCu,onLogout}){
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {filtH.map(h=>{
               const exp=!!expanded[h.id];
+              // Détecter si la transaction est liée à un groupe (rétroactif) :
+              // - soit le nom enregistré correspond à un groupe existant aujourd'hui
+              // - soit la PM enregistrée appartient maintenant à un groupe
+              let groupeAssocie = null;
+              if(h.dest==="pm"&&h.pm_nom){
+                groupeAssocie = pmGroupes.find(g=>g.nom===h.pm_nom);
+                if(!groupeAssocie){
+                  const pmActuelle = pms.find(p=>p.nom===h.pm_nom);
+                  if(pmActuelle&&pmActuelle.groupe_id){
+                    groupeAssocie = pmGroupes.find(g=>g.id===pmActuelle.groupe_id);
+                  }
+                }
+              }
               const who=h.dest==="pm"?(h.pm_nom||"?")+" ("+(h.pm_cat||"?")+")": (h.gang_nom||"?")+" ("+(h.gang_cat||"?")+")";
               const tl=(h.types||[]).map(t=>t==="objets"?"Objets·"+(h.dest==="pm"?h.pm_pct:h.gang_pct)+"%":t==="liasses"?"Liasses·"+h.taux_liasse+"$":t==="argent"?"Argent·40%":"").filter(Boolean).join(" + ");
               const poidsObjetsH=(h.lignes||[]).reduce((s,l)=>s+(+l.poids||0),0);
@@ -2037,7 +2067,12 @@ function Main({cu,setCu,onLogout}){
               return(
                 <div key={h.id} style={card}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div><span style={{fontWeight:700,fontSize:14}}>{who}</span>{h.membre&&<span style={{fontSize:12,color:C.muted,marginLeft:8}}>· payé par {h.membre}</span>}<div style={{fontSize:11,color:C.muted,marginTop:2}}>{tl}</div></div>
+                    <div>
+                      <span style={{fontWeight:700,fontSize:14}}>{who}</span>
+                      {groupeAssocie&&<span title={"Groupe : "+groupeAssocie.nom} style={{display:"inline-block",marginLeft:8,fontSize:10,padding:"1px 7px",background:"rgba(227,185,74,0.12)",color:C.amber,border:"1px solid rgba(227,185,74,0.3)",borderRadius:10,fontWeight:600,verticalAlign:"middle"}}>👥 {groupeAssocie.nom}</span>}
+                      {h.membre&&<span style={{fontSize:12,color:C.muted,marginLeft:8}}>· payé par {h.membre}</span>}
+                      <div style={{fontSize:11,color:C.muted,marginTop:2}}>{tl}</div>
+                    </div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       <div style={{textAlign:"right"}}>
                         <div style={{fontSize:15,fontWeight:700,color:C.green}}>{fmt(h.total)}</div>
