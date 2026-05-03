@@ -1478,8 +1478,7 @@ function Main({cu,setCu,onLogout}){
       : pms;
     const visible = showAll.pms ? filteredPMs : filteredPMs.slice(0,PREVIEW);
     return <>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-        <PMSearchInput initialValue={pmSearch} onChange={setPMSearch}/>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
         <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
         {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
       </div>
@@ -2274,7 +2273,13 @@ function Main({cu,setCu,onLogout}){
           {/* Ligne 1 : Catégories PM + Petites mains */}
           <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             <div style={card}><div style={S.sec}>Catégories PM</div><CatTable cats={catsPM} setCats={setCatsPM} table="categories_pm" eId={eCPM} setEId={setECPM} nc={nCPM} setNc={setNCPM}/></div>
-            <div style={card}><div style={S.sec}>Petites mains</div><PMList/></div>
+            <div style={card}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:14}}>
+                <div style={{...S.sec,margin:0,flexShrink:0}}>Petites mains</div>
+                <PMSearchInput initialValue={pmSearch} onChange={setPMSearch}/>
+              </div>
+              <PMList/>
+            </div>
           </div>
           {/* Ligne 2 : Groupes PM (pleine largeur) */}
           <div style={card}><div style={S.sec}>Groupes PM</div><GroupeList/></div>
