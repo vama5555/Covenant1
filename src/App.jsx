@@ -829,10 +829,12 @@ function Main({cu,setCu,onLogout}){
 
   const [now,setNow]=useState(Date.now());
   useEffect(()=>{
-    if(!blanch)return;
+    // Timer uniquement actif sur le tableau de bord ET s'il y a un blanchiment en cours
+    // (sinon ça re-render Main toutes les secondes et fait perdre le focus partout)
+    if(!blanch || tab!=="dashboard")return;
     const t=setInterval(()=>setNow(Date.now()),1000);
     return ()=>clearInterval(t);
-  },[blanch]);
+  },[blanch,tab]);
 
   const [blAmount,setBlAmount]=useState("");
   async function startBlanch(){
