@@ -599,6 +599,73 @@ function AddCatForm({onAdd}){
   );
 }
 
+// Formulaire d'édition d'une PM stable (hors de Main pour éviter perte de focus à chaque Realtime)
+function EditPMForm({pm,catsPM,pmGroupes,onSave,onCancel}){
+  const [nom,setNom]=useState(pm.nom||"");
+  const [numero,setNumero]=useState(pm.numero||"");
+  const [lieu,setLieu]=useState(pm.lieu_taff||"");
+  const [catId,setCatId]=useState(pm.categorie_id||"");
+  const [groupeId,setGroupeId]=useState(pm.groupe_id||"");
+  function handleSave(){
+    onSave({...pm, nom, numero:numero||null, lieu_taff:lieu||null, categorie_id:catId, groupe_id:groupeId||null});
+  }
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10,padding:"10px 12px",background:C.surfaceAlt,borderRadius:6}}>
+      <input placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSave()}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+        <input placeholder="Numéro" value={numero} onChange={e=>setNumero(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSave()}/>
+        <input placeholder="Lieu de taff" value={lieu} onChange={e=>setLieu(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSave()}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+        <select value={catId} onChange={e=>setCatId(e.target.value)}>
+          <option value="">— catégorie —</option>
+          {catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+        </select>
+        <select value={groupeId} onChange={e=>setGroupeId(e.target.value)}>
+          <option value="">— aucun groupe —</option>
+          {pmGroupes.map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}
+        </select>
+      </div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+        <button onClick={onCancel} style={{fontSize:11,color:C.muted}}>Annuler</button>
+        <button onClick={handleSave} style={{fontSize:11,color:C.green,fontWeight:700}}>OK</button>
+      </div>
+    </div>
+  );
+}
+
+// Formulaire d'ajout de groupe stable (hors de Main)
+function AddGroupeForm({onAdd}){
+  const [nom,setNom]=useState("");
+  async function submit(){
+    if(!nom.trim())return;
+    await onAdd(nom.trim());
+    setNom("");
+  }
+  return (
+    <div style={{display:"flex",gap:6,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:6}}>
+      <input style={{flex:1}} placeholder="Nom du groupe (ex: Valtid + pote)" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+      <button onClick={submit} style={{fontWeight:700,color:C.green}}>+ Créer</button>
+    </div>
+  );
+}
+
+// Formulaire d'édition d'un groupe stable (hors de Main)
+function EditGroupeForm({groupe,onSave,onCancel}){
+  const [nom,setNom]=useState(groupe.nom||"");
+  function handleSave(){
+    if(!nom.trim())return;
+    onSave({...groupe, nom:nom.trim()});
+  }
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"8px 10px",background:C.surfaceAlt,borderRadius:6}}>
+      <input style={{flex:1}} value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      <button onClick={onCancel} style={{fontSize:11,color:C.muted}}>Annuler</button>
+      <button onClick={handleSave} style={{fontSize:11,color:C.green,fontWeight:700}}>OK</button>
+    </div>
+  );
+}
+
 function Main({cu,setCu,onLogout}){
   const isAdmin=cu.role==="admin";
   const [tab,setTab]=useState("dashboard");
@@ -1014,7 +1081,6 @@ function Main({cu,setCu,onLogout}){
   const PREVIEW=5;
   // États pour gérer les groupes PM
   const [eGr,setEGr]=useState(null); // ID du groupe en édition
-  const [nGr,setNGr]=useState(""); // Nom du nouveau groupe
 
   const [eApId,setEApId]=useState(null);
   const [eApV,setEApV]=useState({});
@@ -1287,27 +1353,14 @@ function Main({cu,setCu,onLogout}){
         const groupe=pmGroupes.find(g=>g.id===p.groupe_id);
         if(isAdmin&&ePM===p.id){
           return (
-            <div key={p.id} style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10,padding:"10px 12px",background:C.surfaceAlt,borderRadius:6}}>
-              <input style={{}} placeholder="Nom" value={p.nom||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,nom:e.target.value}:x))}/>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                <input placeholder="Numéro" value={p.numero||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,numero:e.target.value}:x))}/>
-                <input placeholder="Lieu de taff" value={p.lieu_taff||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,lieu_taff:e.target.value}:x))}/>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                <select value={p.categorie_id||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,categorie_id:e.target.value}:x))}>
-                  <option value="">— catégorie —</option>
-                  {catsPM.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
-                </select>
-                <select value={p.groupe_id||""} onChange={e=>setPMs(ps=>ps.map(x=>x.id===p.id?{...x,groupe_id:e.target.value||null}:x))}>
-                  <option value="">— aucun groupe —</option>
-                  {pmGroupes.map(g=><option key={g.id} value={g.id}>👥 {g.nom}</option>)}
-                </select>
-              </div>
-              <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
-                <button onClick={()=>setEPM(null)} style={{fontSize:11,color:C.muted}}>Annuler</button>
-                <button onClick={()=>save(p)} style={{fontSize:11,color:C.green,fontWeight:700}}>OK</button>
-              </div>
-            </div>
+            <EditPMForm
+              key={p.id}
+              pm={p}
+              catsPM={catsPM}
+              pmGroupes={pmGroupes}
+              onSave={save}
+              onCancel={()=>setEPM(null)}
+            />
           );
         }
         return (
@@ -1350,14 +1403,12 @@ function Main({cu,setCu,onLogout}){
       setEGr(null);
       if(before&&before.nom!==g.nom) log("items","groupe_update",`a renommé le groupe <b>${diff(before.nom,g.nom)}</b>`);
     }
-    async function addGroupe(){
-      if(!nGr.trim())return;
-      const{data}=await sb.from("pm_groupes").insert({nom:nGr.trim()}).select().single();
+    async function addGroupe(nom){
+      const{data}=await sb.from("pm_groupes").insert({nom}).select().single();
       if(data){
         setPMGroupes(gs=>[...gs,data]);
         log("items","groupe_create",`a créé le groupe <b>${data.nom}</b>`);
       }
-      setNGr("");
     }
     async function delGroupe(id){
       const g=pmGroupes.find(x=>x.id===id);
@@ -1376,10 +1427,12 @@ function Main({cu,setCu,onLogout}){
         const membres=pms.filter(p=>p.groupe_id===g.id);
         if(isAdmin&&eGr===g.id){
           return (
-            <div key={g.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,padding:"8px 10px",background:C.surfaceAlt,borderRadius:6}}>
-              <input style={{flex:1}} value={g.nom} onChange={e=>setPMGroupes(gs=>gs.map(x=>x.id===g.id?{...x,nom:e.target.value}:x))} onKeyDown={e=>e.key==="Enter"&&saveGroupe(g)}/>
-              <button onClick={()=>saveGroupe(g)} style={{fontSize:11,color:C.green,fontWeight:700}}>OK</button>
-            </div>
+            <EditGroupeForm
+              key={g.id}
+              groupe={g}
+              onSave={saveGroupe}
+              onCancel={()=>setEGr(null)}
+            />
           );
         }
         return (
@@ -1403,12 +1456,7 @@ function Main({cu,setCu,onLogout}){
           {showAll.groupes?"▲ Réduire":`▼ Voir tous (${pmGroupes.length})`}
         </button>
       )}
-      {isAdmin&&(
-        <div style={{display:"flex",gap:6,alignItems:"center",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:6}}>
-          <input style={{flex:1}} placeholder="Nom du groupe (ex: Valtid + pote)" value={nGr} onChange={e=>setNGr(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addGroupe()}/>
-          <button onClick={addGroupe} style={{fontWeight:700,color:C.green}}>+ Créer</button>
-        </div>
-      )}
+      {isAdmin&&<AddGroupeForm onAdd={addGroupe}/>}
     </>;
   }
 
