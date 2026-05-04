@@ -835,6 +835,61 @@ const PMSearchInput = memo(function PMSearchInput({initialValue,onChange}){
   );
 }, () => true); // Jamais re-render depuis le parent : le state est totalement local
 
+// Formulaire d'édition d'une CATÉGORIE (PM ou Gang) stable hors de Main
+function EditCatForm({cat,onSave,onCancel}){
+  const [nom,setNom]=useState(cat.nom||"");
+  const [pct,setPct]=useState(cat.pct_objets??0);
+  const [taux,setTaux]=useState(cat.taux_liasse??0);
+  function handleSave(){
+    onSave({...cat, nom, pct_objets:+pct||0, taux_liasse:+taux||0});
+  }
+  return (
+    <>
+      <input style={S.inp} value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      <input type="number" style={S.inp} value={pct} onChange={e=>setPct(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      <input type="number" style={S.inp} value={taux} onChange={e=>setTaux(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      <button onClick={handleSave} style={{color:C.green,fontWeight:700}}>OK</button>
+    </>
+  );
+}
+
+// Formulaire d'édition d'un GANG stable hors de Main
+function EditGangForm({gang,catsGang,onSave,onCancel}){
+  const [nom,setNom]=useState(gang.nom||"");
+  const [catId,setCatId]=useState(gang.categorie_id||"");
+  function handleSave(){
+    onSave({...gang, nom, categorie_id:catId});
+  }
+  return (
+    <>
+      <input style={{flex:1}} value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      <select value={catId} onChange={e=>setCatId(e.target.value)}>
+        <option value="">—</option>
+        {catsGang.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+      </select>
+      <button onClick={handleSave} style={{color:C.green,fontWeight:700}}>OK</button>
+    </>
+  );
+}
+
+// Formulaire d'édition d'un ITEM (PM ou Gang) stable hors de Main
+function EditItemForm({item,onSave,onCancel}){
+  const [nom,setNom]=useState(item.nom||"");
+  const [prix,setPrix]=useState(item.prix??0);
+  const [poids,setPoids]=useState(item.poids||0);
+  function handleSave(){
+    onSave({...item, nom, prix:+prix||0, poids:+poids||0});
+  }
+  return (
+    <>
+      <input style={{flex:1,minWidth:0}} value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      <input data-mobile="col-prix" type="number" style={{width:70}} value={prix} onChange={e=>setPrix(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      <input data-mobile="col-poids" type="number" step="0.01" min="0" style={{width:65}} value={poids} onChange={e=>setPoids(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      <button onClick={handleSave} style={{color:C.green,fontWeight:700}}>OK</button>
+    </>
+  );
+}
+
 function Main({cu,setCu,onLogout}){
   const isAdmin=cu.role==="admin";
   const [tab,setTab]=useState("dashboard");
@@ -1540,7 +1595,7 @@ function Main({cu,setCu,onLogout}){
       {visible.map(c=>(
         <div key={c.id} style={{display:"grid",gridTemplateColumns:"1fr 80px 90px auto",gap:8,alignItems:"center",marginBottom:8}}>
           {isAdmin&&eId===c.id
-            ?<><input style={S.inp} value={c.nom} onChange={e=>setCats(cs=>cs.map(x=>x.id===c.id?{...x,nom:e.target.value}:x))}/><input type="number" style={S.inp} value={c.pct_objets} onChange={e=>setCats(cs=>cs.map(x=>x.id===c.id?{...x,pct_objets:+e.target.value}:x))}/><input type="number" style={S.inp} value={c.taux_liasse} onChange={e=>setCats(cs=>cs.map(x=>x.id===c.id?{...x,taux_liasse:+e.target.value}:x))}/><button onClick={()=>save(c)} style={{color:C.green,fontWeight:700}}>OK</button></>
+            ?<EditCatForm cat={c} onSave={save} onCancel={()=>setEId(null)}/>
             :<><span style={{fontSize:14,color:C.text}}>{c.nom}</span><span style={{fontSize:13,color:C.muted}}>{c.pct_objets}%</span><span style={{fontSize:13,color:C.muted}}>{c.taux_liasse}$</span>{isAdmin&&<div style={{display:"flex",gap:4}}><button onClick={()=>setEId(c.id)}>Mod.</button><button onClick={()=>del(c.id)} style={{color:C.red}}>×</button></div>}</>
           }
         </div>
@@ -1774,7 +1829,7 @@ function Main({cu,setCu,onLogout}){
       {visible.map(p=>(
         <div key={p.id} style={S.row}>
           {isAdmin&&eGa===p.id
-            ?<><input style={{flex:1}} value={p.nom} onChange={e=>setGangs(ps=>ps.map(x=>x.id===p.id?{...x,nom:e.target.value}:x))}/><select value={p.categorie_id} onChange={e=>setGangs(ps=>ps.map(x=>x.id===p.id?{...x,categorie_id:e.target.value}:x))}>{catsGang.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}</select><button onClick={()=>save(p)} style={{color:C.green,fontWeight:700}}>OK</button></>
+            ?<EditGangForm gang={p} catsGang={catsGang} onSave={save} onCancel={()=>setEGa(null)}/>
             :<><span style={{flex:1,fontSize:14,color:C.text}}>{p.nom}</span><span style={{fontSize:12,color:C.muted}}>{catsGang.find(c=>c.id===p.categorie_id)?.nom||"?"}</span>{isAdmin&&<><button onClick={()=>setEGa(p.id)}>Mod.</button><button onClick={()=>del(p.id)} style={{color:C.red}}>×</button></>}</>
           }
         </div>
@@ -1854,12 +1909,7 @@ function Main({cu,setCu,onLogout}){
             }
 
             {canEdit&&eId===it.id
-              ?<>
-                <input style={{flex:1,minWidth:0}} value={it.nom} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,nom:e.target.value}:x))}/>
-                <input data-mobile="col-prix" type="number" style={{width:70}} value={it.prix} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,prix:+e.target.value}:x))}/>
-                <input data-mobile="col-poids" type="number" step="0.01" min="0" style={{width:65}} value={it.poids||0} onChange={e=>setItems(is=>is.map(x=>x.id===it.id?{...x,poids:e.target.value}:x))}/>
-                <button onClick={()=>save(it)} style={{color:C.green,fontWeight:700}}>OK</button>
-              </>
+              ?<EditItemForm item={it} onSave={save} onCancel={()=>setEId(null)}/>
               :<>
                 <span style={{flex:1,minWidth:0,fontSize:14,color:C.text,wordBreak:"break-word"}}>
                   {it.nom}
