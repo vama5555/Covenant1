@@ -338,7 +338,7 @@ function downloadCSV(filename,content){
 }
 
 // ── Section pliable d'items avec recherche (Transactions) ──
-function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
+function ItemsSection({title,pct,items,qtes,onChangeQte,accent,dest}){
   const [open,setOpen]=useState(false);
   const [q,setQ]=useState("");
   const visibleItems=useMemo(()=>items.filter(it=>it.visible!==false),[items]);
@@ -384,7 +384,7 @@ function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
                   <span style={{flex:1,fontSize:13,color:C.text}}>
                     {it.nom}
                     <span style={{fontSize:11,color:C.muted,marginLeft:5}}>
-                      ({prixPM!==null ? <span style={{color:C.green,fontWeight:600}}>{fmt(prixPM)}</span> : <span style={{fontStyle:"italic"}}>choisir une PM</span>}
+                      ({prixPM!==null ? <span style={{color:C.green,fontWeight:600}}>{fmt(prixPM)}</span> : <span style={{fontStyle:"italic"}}>{dest==="gang"?"choisir un Gang":"choisir une PM"}</span>}
                       {it.poids>0&&" · "+fmtKgD(it.poids)})
                     </span>
                   </span>
@@ -2264,10 +2264,10 @@ function Main({cu,setCu,onLogout}){
 
           <div style={{marginBottom:14}}>
             {tx.dest==="pm"
-              ? <ItemsSection title="Objets" pct={aPct} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte}/>
+              ? <ItemsSection title="Objets" pct={aPct} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte} dest={tx.dest}/>
               : <>
-                  <ItemsSection title="Objets classiques" pct={aPct} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte}/>
-                  <ItemsSection title="Objets gang" pct={aPct} items={itemsG} qtes={tx.qtes} onChangeQte={setQte} accent={C.amber}/>
+                  <ItemsSection title="Objets classiques" pct={aPct} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte} dest={tx.dest}/>
+                  <ItemsSection title="Objets gang" pct={aPct} items={itemsG} qtes={tx.qtes} onChangeQte={setQte} accent={C.amber} dest={tx.dest}/>
                 </>
             }
           </div>
