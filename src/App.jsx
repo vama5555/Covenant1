@@ -907,6 +907,8 @@ function Main({cu,setCu,onLogout}){
   const [users,setUsers]=useState([]);
   const [blanch,setBlanch]=useState(null);
   const [blanchHistory,setBlanchHistory]=useState([]);
+  const [entrepots,setEntrepots]=useState([]);
+  const [entrepotsHistory,setEntrepotsHistory]=useState([]);
   const [alertThreshold,setAlertThreshold]=useState(10000);
   const [auditLogs,setAuditLogs]=useState([]);
   const [pmGroupes,setPMGroupes]=useState([]);
@@ -916,7 +918,7 @@ function Main({cu,setCu,onLogout}){
     const cutoff=new Date(Date.now()-30*24*3600*1000).toISOString();
     sb.from("audit_log").delete().lt("created_at",cutoff).then(()=>{});
 
-    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st,al,bh,pg]=await Promise.all([
+    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st,al,bh,pg,en,enh]=await Promise.all([
       sb.from("apparts").select("*").order("nom"),
       sb.from("categories_pm").select("*").order("pct_objets"),
       sb.from("categories_gang").select("*").order("pct_objets"),
@@ -932,6 +934,8 @@ function Main({cu,setCu,onLogout}){
       sb.from("audit_log").select("*").order("created_at",{ascending:false}).limit(500),
       sb.from("blanchiment_history").select("*").order("recup_at",{ascending:false}).limit(500),
       sb.from("pm_groupes").select("*").order("nom"),
+      sb.from("entrepots").select("*").eq("status","active").order("depot_at",{ascending:true}),
+      sb.from("entrepots_history").select("*").order("recup_at",{ascending:false}).limit(500),
     ]);
     setApparts(a.data||[]);
     setCatsPM(cpm.data||[]);
@@ -948,6 +952,8 @@ function Main({cu,setCu,onLogout}){
     setAuditLogs(al.data||[]);
     setBlanchHistory(bh.data||[]);
     setPMGroupes(pg.data||[]);
+    setEntrepots(en.data||[]);
+    setEntrepotsHistory(enh.data||[]);
     // Sécurité session : si l'utilisateur courant n'existe plus en BDD ou a changé de code, on le déconnecte
     if(cu && u.data){
       const userInBdd = u.data.find(x=>x.id===cu.id);
@@ -985,6 +991,8 @@ function Main({cu,setCu,onLogout}){
       blanchiment_history:()=>sb.from("blanchiment_history").select("*").order("recup_at",{ascending:false}).limit(500).then(({data})=>setBlanchHistory(data||[])),
       audit_log:         ()=>sb.from("audit_log").select("*").order("created_at",{ascending:false}).limit(500).then(({data})=>setAuditLogs(data||[])),
       pm_groupes:        ()=>sb.from("pm_groupes").select("*").order("nom").then(({data})=>setPMGroupes(data||[])),
+      entrepots:         ()=>sb.from("entrepots").select("*").eq("status","active").order("depot_at",{ascending:true}).then(({data})=>setEntrepots(data||[])),
+      entrepots_history: ()=>sb.from("entrepots_history").select("*").order("recup_at",{ascending:false}).limit(500).then(({data})=>setEntrepotsHistory(data||[])),
       app_settings:      async ()=>{
                             const {data}=await sb.from("app_settings").select("*").eq("key","alert_threshold").maybeSingle();
                             if(data&&data.value)setAlertThreshold(+data.value||10000);
@@ -1019,6 +1027,8 @@ function Main({cu,setCu,onLogout}){
       .on("postgres_changes", {event:"*", schema:"public", table:"audit_log"},          p=>triggerReload("audit_log"))
       .on("postgres_changes", {event:"*", schema:"public", table:"app_settings"},       p=>triggerReload("app_settings"))
       .on("postgres_changes", {event:"*", schema:"public", table:"pm_groupes"},         p=>triggerReload("pm_groupes"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"entrepots"},          p=>triggerReload("entrepots"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"entrepots_history"},  p=>triggerReload("entrepots_history"))
       .subscribe();
 
     return () => {
@@ -1045,12 +1055,16 @@ function Main({cu,setCu,onLogout}){
   useEffect(()=>{
     // Timer uniquement actif sur le tableau de bord ET s'il y a un blanchiment en cours
     // (sinon ça re-render Main toutes les secondes et fait perdre le focus partout)
-    if(!blanch || tab!=="dashboard")return;
+    // Timer uniquement actif sur le tableau de bord ET s'il y a un blanchiment OU un entrepôt en cours
+    // (sinon ça re-render Main toutes les secondes et fait perdre le focus partout)
+    if(tab!=="dashboard") return;
+    if(!blanch && (!entrepots || entrepots.length===0)) return;
     const t=setInterval(()=>setNow(Date.now()),1000);
     return ()=>clearInterval(t);
-  },[blanch,tab]);
+  },[blanch,tab,entrepots]);
 
   const [blAmount,setBlAmount]=useState("");
+  const [enAmount,setEnAmount]=useState("");
   async function startBlanch(){
     const v=+blAmount||0; if(v<=0) return;
     if(blanch){alert("Un dépôt est déjà en cours.");return;}
@@ -1087,6 +1101,55 @@ function Main({cu,setCu,onLogout}){
       const {data}=await sb.from("blanchiment_history").select("*").order("recup_at",{ascending:false}).limit(500);
       setBlanchHistory(data||[]);
     }
+  }
+
+  // ── Gestion des Entrepôts ──
+  const ENTREPOT_DURATION_H = 24; // 24h fixe
+  async function startEntrepot(montantStr){
+    const v = +montantStr || 0;
+    if(v <= 0) return;
+    if(entrepots.length >= 2){
+      alert("Limite atteinte : 2 entrepôts maximum en même temps.");
+      return;
+    }
+    const dep = new Date();
+    const rec = new Date(dep.getTime() + ENTREPOT_DURATION_H*3600000);
+    const {data} = await sb.from("entrepots").insert({
+      montant: v,
+      depot_at: dep.toISOString(),
+      recup_at: rec.toISOString(),
+      user_depot: cu.nom,
+      status: "active"
+    }).select().single();
+    if(data){
+      setEntrepots(prev => [...prev, data]);
+      log("entrepot","start",`a démarré un entrepôt de <b>${fmt(v)}</b> (durée : 24h)`);
+    }
+  }
+  async function recupEntrepot(ent){
+    if(!ent) return;
+    // Archiver dans entrepots_history
+    await sb.from("entrepots_history").insert({
+      montant: ent.montant,
+      depot_at: ent.depot_at,
+      recup_at: new Date().toISOString(),
+      user_depot: ent.user_depot,
+      user_recup: cu.nom
+    });
+    // Supprimer l'entrepôt actif
+    await sb.from("entrepots").delete().eq("id", ent.id);
+    setEntrepots(prev => prev.filter(x => x.id !== ent.id));
+    log("entrepot","recup",`a récupéré un entrepôt de <b>${fmt(ent.montant)}</b> (déposé par ${ent.user_depot})`);
+    // Recharger l'historique entrepôts pour mise à jour
+    const {data} = await sb.from("entrepots_history").select("*").order("recup_at",{ascending:false}).limit(500);
+    setEntrepotsHistory(data||[]);
+  }
+  async function delEntrepot(ent){
+    if(!ent || !isAdmin) return;
+    if(!window.confirm(`Supprimer l'entrepôt de ${fmt(ent.montant)} (sans archiver dans l'historique) ?`)) return;
+    await sb.from("entrepots").delete().eq("id", ent.id);
+    setEntrepots(prev => prev.filter(x => x.id !== ent.id));
+    log("entrepot","delete",`a supprimé un entrepôt de <b>${fmt(ent.montant)}</b>`);
   }
 
   const E0={dest:"pm",pmId:"",gangId:"",membreId:"",qtes:{},liasseQte:"",argentSale:"",date:today(),note:""};
@@ -1221,6 +1284,7 @@ function Main({cu,setCu,onLogout}){
   }
 
   const [hFil,setHFil]=useState({who:""});
+  const [hType,setHType]=useState("transactions"); // 'transactions' | 'blanchi' | 'entrepots'
   // Options du filtre : on inclut les groupes existants en plus des noms de transactions
   const whoOpts=useMemo(()=>{
     const seen=new Set();
@@ -2229,6 +2293,89 @@ function Main({cu,setCu,onLogout}){
             )}
           </div>
 
+          {/* ENTREPÔTS — 2 slots côte à côte, formulaire de dépôt si <2 actifs */}
+          {(()=>{
+            const enAvailable = entrepots.length < 2;
+            const enPreviewAmount = +enAmount||0;
+            const enPreviewEnd = enPreviewAmount>0?new Date(Date.now()+24*3600000):null;
+            return (
+              <div style={{...card,marginTop:16,borderLeft:"3px solid "+C.amber,padding:"14px 18px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:10,fontWeight:700,color:C.amber,textTransform:"uppercase",letterSpacing:"0.12em"}}>Entrepôts</span>
+                    <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:600,
+                      background:entrepots.length===0?"rgba(160,160,160,0.15)":entrepots.length>=2?"rgba(223,90,68,0.15)":"rgba(212,146,10,0.15)",
+                      color:entrepots.length===0?C.muted:entrepots.length>=2?C.red:C.amber,
+                      border:"1px solid "+(entrepots.length===0?"rgba(160,160,160,0.3)":entrepots.length>=2?"rgba(223,90,68,0.3)":"rgba(212,146,10,0.3)")}}>
+                      {entrepots.length} / 2 actif{entrepots.length>1?"s":""}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Liste des entrepôts actifs (1 ou 2) */}
+                {entrepots.length>0&&(
+                  <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:entrepots.length===1?"1fr":"1fr 1fr",gap:12,marginBottom:enAvailable?14:0}}>
+                    {entrepots.map((ent,idx)=>{
+                      const enRec = new Date(ent.recup_at);
+                      const enDep = new Date(ent.depot_at);
+                      const enMs = enRec.getTime() - now;
+                      const enReady = enMs <= 0;
+                      const enElapsed = now - enDep.getTime();
+                      const enTotal = enRec.getTime() - enDep.getTime();
+                      const enPct = enTotal>0 ? Math.min(100, (enElapsed/enTotal)*100) : 0;
+                      return (
+                        <div key={ent.id} style={{background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                            <span style={{fontSize:9,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Caisse {idx+1}</span>
+                            <span style={{fontSize:10,padding:"1px 7px",borderRadius:4,fontWeight:600,
+                              background:enReady?"rgba(127,184,107,0.15)":"rgba(212,146,10,0.15)",
+                              color:enReady?C.green:C.amber}}>{enReady?"Prêt":"En cours"}</span>
+                          </div>
+                          <div style={{display:"flex",alignItems:"baseline",gap:4,marginBottom:8}}>
+                            <span style={{fontSize:22,fontWeight:700,color:C.amber}}>{fmt(ent.montant).replace("$","")}</span>
+                            <span style={{fontSize:12,color:C.dim}}>$</span>
+                          </div>
+                          <div style={{fontSize:10,color:C.muted,marginBottom:8}}>
+                            Déposé par <strong style={{color:C.text}}>{ent.user_depot}</strong> · {fmtDateTime(enDep)}
+                          </div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.muted,marginBottom:3}}>
+                            <span>{fmtRem(enMs)}</span>
+                            <span>{Math.round(enPct)}%</span>
+                          </div>
+                          <Bar val={enPct} max={100} color={enReady?C.green:C.amber}/>
+                          <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginTop:8}}>
+                            <button onClick={()=>recupEntrepot(ent)} disabled={!enReady} style={{padding:"6px 14px",fontSize:12,fontWeight:700,background:enReady?C.green:"#3a3a3a",color:enReady?"#1a1a1a":C.muted,border:"none",cursor:enReady?"pointer":"not-allowed",opacity:enReady?1:0.6}}>Récupérer</button>
+                            {isAdmin&&<button onClick={()=>delEntrepot(ent)} style={{color:C.red,fontSize:11,padding:"4px 10px"}}>×</button>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Formulaire de dépôt (si <2 actifs) */}
+                {enAvailable&&(
+                  <div style={{borderTop:entrepots.length>0?"1px solid "+C.border:"none",paddingTop:entrepots.length>0?12:0}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"end"}}>
+                      <div>
+                        <div style={S.lbl}>Montant à recevoir ($)</div>
+                        <input type="number" min="1" placeholder="ex: 45000" value={enAmount} onChange={e=>setEnAmount(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&enPreviewAmount>0){startEntrepot(enAmount);setEnAmount("");}}} style={{width:"100%"}}/>
+                      </div>
+                      <button onClick={()=>{startEntrepot(enAmount);setEnAmount("");}} disabled={enPreviewAmount<=0} style={{padding:"10px 26px",fontWeight:700,fontSize:13,letterSpacing:"0.05em",textTransform:"uppercase",background:enPreviewAmount>0?C.amber:"#3a3a3a",color:enPreviewAmount>0?"#1a1a1a":C.muted,border:"none",borderRadius:6,transition:"background .2s"}} onMouseEnter={e=>{if(enPreviewAmount>0)e.currentTarget.style.background=C.amberBright;}} onMouseLeave={e=>{if(enPreviewAmount>0)e.currentTarget.style.background=C.amber;}}>Déposer</button>
+                    </div>
+                    <div style={{marginTop:8,fontSize:12,color:C.muted}}>
+                      {enPreviewAmount<=0?"Saisis le montant que tu vas récupérer (caisse de 750kg, durée 24h)."
+                      :<>Durée fixe : <strong style={{color:C.text}}>24h</strong> · Récupération vers <strong style={{color:C.green}}>{fmtTime(enPreviewEnd)}</strong></>}
+                    </div>
+                  </div>
+                )}
+                {!enAvailable&&(
+                  <div style={{fontSize:11,color:C.red,marginTop:6,fontStyle:"italic"}}>⚠ Limite atteinte (2/2). Récupère ou supprime un entrepôt pour en déposer un nouveau.</div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* COMPTES MEMBRES — style "tableau dense" : cellules collées avec bordures fines */}
           <div style={{display:"flex",alignItems:"center",gap:8,margin:"24px 0 10px"}}>
             <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em"}}>Comptes membres</span>
@@ -2320,21 +2467,32 @@ function Main({cu,setCu,onLogout}){
 
           {/* Filtres sur 1 seule ligne */}
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
-            <select value={hFil.who} onChange={e=>setHFil(f=>({...f,who:e.target.value}))} style={{flex:"0 1 auto",minWidth:200}}>
-              <option value="">Toutes les PM / gangs</option>
-              {whoOpts.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
+            <select value={hType} onChange={e=>setHType(e.target.value)} style={{flex:"0 1 auto",minWidth:140,fontWeight:600}}>
+              <option value="transactions">Transactions</option>
+              <option value="blanchi">Blanchi</option>
+              <option value="entrepots">Entrepôts</option>
             </select>
+            {hType==="transactions"&&(
+              <select value={hFil.who} onChange={e=>setHFil(f=>({...f,who:e.target.value}))} style={{flex:"0 1 auto",minWidth:200}}>
+                <option value="">Toutes les PM / gangs</option>
+                {whoOpts.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+            )}
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{fontSize:12,color:C.muted}}>Du</span>
               <input type="date" value={hFrom} onChange={e=>setHFrom(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/>
               <span style={{fontSize:12,color:C.muted}}>au</span>
               <input type="date" value={hTo} onChange={e=>setHTo(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/>
             </div>
-            <span style={{fontSize:11,color:C.muted,marginLeft:"auto"}}>{filtH.length} transaction{filtH.length!==1?"s":""}</span>
+            <span style={{fontSize:11,color:C.muted,marginLeft:"auto"}}>
+              {hType==="transactions"&&`${filtH.length} transaction${filtH.length!==1?"s":""}`}
+              {hType==="blanchi"&&(()=>{const list=blanchHistory.filter(b=>{if(!hFrom&&!hTo)return true;const d=(b.recup_at||"").slice(0,10);return (!hFrom||d>=hFrom)&&(!hTo||d<=hTo);});return `${list.length} blanchiment${list.length!==1?"s":""}`;})()}
+              {hType==="entrepots"&&(()=>{const list=entrepotsHistory.filter(e=>{if(!hFrom&&!hTo)return true;const d=(e.recup_at||"").slice(0,10);return (!hFrom||d>=hFrom)&&(!hTo||d<=hTo);});return `${list.length} entrepôt${list.length!==1?"s":""}`;})()}
+            </span>
           </div>
 
-          {/* Bande de stats */}
-          {filtH.length>0&&(
+          {/* Bande de stats (uniquement pour transactions) */}
+          {hType==="transactions"&&filtH.length>0&&(
             <div className="cv-stats-strip">
               <div className="cv-stat-box">
                 <div className="cv-stat-label">Objets</div>
@@ -2359,7 +2517,8 @@ function Main({cu,setCu,onLogout}){
             </div>
           )}
 
-          {filtH.length===0&&<div style={{fontSize:13,color:C.muted,textAlign:"center",padding:"3rem",opacity:.5}}>Aucune transaction</div>}
+          {hType==="transactions"&&filtH.length===0&&<div style={{fontSize:13,color:C.muted,textAlign:"center",padding:"3rem",opacity:.5}}>Aucune transaction</div>}
+          {hType==="transactions"&&(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {filtH.map(h=>{
               const exp=!!expanded[h.id];
@@ -2446,6 +2605,86 @@ function Main({cu,setCu,onLogout}){
               );
             })}
           </div>
+          )}
+
+          {/* Vue Blanchi : liste des blanchiments archivés */}
+          {hType==="blanchi"&&(()=>{
+            const list = blanchHistory.filter(b=>{
+              if(!hFrom&&!hTo)return true;
+              const d=(b.recup_at||"").slice(0,10);
+              return (!hFrom||d>=hFrom)&&(!hTo||d<=hTo);
+            });
+            if(list.length===0) return <div style={{fontSize:13,color:C.muted,textAlign:"center",padding:"3rem",opacity:.5}}>Aucun blanchiment archivé</div>;
+            return (
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {list.map(b=>(
+                  <div key={b.id} style={{...card,borderLeft:"3px solid "+C.amber,padding:"12px 16px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                      <div style={{display:"flex",alignItems:"center",gap:12}}>
+                        <span style={{fontSize:18}}>🧺</span>
+                        <div>
+                          <div style={{fontSize:14,fontWeight:600,color:C.text}}>Blanchiment {b.user_nom?<span style={{color:C.muted,fontWeight:400}}>· par {b.user_nom}</span>:""}</div>
+                          <div style={{fontSize:11,color:C.dim,marginTop:2}}>
+                            Déposé le {fmtDateTime(new Date(b.depot_at))} · Récupéré le {fmtDateTime(new Date(b.recup_at))} · Durée : {b.duree_h}h
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:15,fontWeight:700,color:C.amber}}>{fmt(b.montant)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Vue Entrepôts : liste des entrepôts récupérés */}
+          {hType==="entrepots"&&(()=>{
+            const list = entrepotsHistory.filter(e=>{
+              if(!hFrom&&!hTo)return true;
+              const d=(e.recup_at||"").slice(0,10);
+              return (!hFrom||d>=hFrom)&&(!hTo||d<=hTo);
+            });
+            if(list.length===0) return <div style={{fontSize:13,color:C.muted,textAlign:"center",padding:"3rem",opacity:.5}}>Aucun entrepôt récupéré</div>;
+            const totalMontant = list.reduce((s,e)=>s+(+e.montant||0),0);
+            return (
+              <>
+                <div className="cv-stats-strip" style={{gridTemplateColumns:"repeat(2,1fr)"}}>
+                  <div className="cv-stat-box">
+                    <div className="cv-stat-label">Caisses récupérées</div>
+                    <div className="cv-stat-value">{list.length}</div>
+                  </div>
+                  <div className="cv-stat-box">
+                    <div className="cv-stat-label">Montant total</div>
+                    <div className="cv-stat-value" style={{color:C.amber}}>{fmt(totalMontant)}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {list.map(e=>(
+                    <div key={e.id} style={{...card,borderLeft:"3px solid "+C.amber,padding:"12px 16px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:12}}>
+                          <span style={{fontSize:18}}>📦</span>
+                          <div>
+                            <div style={{fontSize:14,fontWeight:600,color:C.text}}>
+                              Entrepôt · déposé par <span style={{color:C.amber}}>{e.user_depot}</span> · récupéré par <span style={{color:C.green}}>{e.user_recup}</span>
+                            </div>
+                            <div style={{fontSize:11,color:C.dim,marginTop:2}}>
+                              Déposé le {fmtDateTime(new Date(e.depot_at))} · Récupéré le {fmtDateTime(new Date(e.recup_at))}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontSize:15,fontWeight:700,color:C.amber}}>{fmt(e.montant)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
 
