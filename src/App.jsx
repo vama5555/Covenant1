@@ -2315,9 +2315,9 @@ function Main({cu,setCu,onLogout}){
                   </div>
                 </div>
 
-                {/* Liste des entrepôts actifs (1 ou 2) - empilés vu la place restreinte */}
+                {/* Liste des entrepôts actifs : 1 colonne si 1 caisse, 2 colonnes si 2 caisses */}
                 {entrepots.length>0&&(
-                  <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:enAvailable?14:0}}>
+                  <div style={{display:"grid",gridTemplateColumns:entrepots.length===2?"1fr 1fr":"1fr",gap:8,marginBottom:enAvailable?14:0}}>
                     {entrepots.map((ent,idx)=>{
                       const enRec = new Date(ent.recup_at);
                       const enDep = new Date(ent.depot_at);
@@ -2327,28 +2327,28 @@ function Main({cu,setCu,onLogout}){
                       const enTotal = enRec.getTime() - enDep.getTime();
                       const enPct = enTotal>0 ? Math.min(100, (enElapsed/enTotal)*100) : 0;
                       return (
-                        <div key={ent.id} style={{background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,padding:"10px 12px"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                            <span style={{fontSize:9,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Caisse {idx+1}</span>
-                            <span style={{fontSize:10,padding:"1px 7px",borderRadius:4,fontWeight:600,
+                        <div key={ent.id} style={{background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,padding:"8px 10px"}}>
+                          {/* Ligne 1 : badge + montant + bouton */}
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+                            <span style={{fontSize:9,padding:"1px 6px",borderRadius:4,fontWeight:600,
                               background:enReady?"rgba(127,184,107,0.15)":"rgba(212,146,10,0.15)",
-                              color:enReady?C.green:C.amber}}>{enReady?"Prêt":"En cours"}</span>
+                              color:enReady?C.green:C.amber,whiteSpace:"nowrap"}}>{enReady?"Prêt":"En cours"}</span>
+                            <span style={{fontSize:16,fontWeight:700,color:C.amber,marginLeft:"auto"}}>{fmt(ent.montant).replace("$","")}<span style={{fontSize:11,color:C.dim,fontWeight:500,marginLeft:2}}>$</span></span>
                           </div>
-                          <div style={{display:"flex",alignItems:"baseline",gap:4,marginBottom:8}}>
-                            <span style={{fontSize:22,fontWeight:700,color:C.amber}}>{fmt(ent.montant).replace("$","")}</span>
-                            <span style={{fontSize:12,color:C.dim}}>$</span>
+                          {/* Ligne 2 : info dépôt compacte */}
+                          <div style={{fontSize:10,color:C.muted,marginBottom:5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                            <strong style={{color:C.text}}>{ent.user_depot}</strong> · {fmtDateTime(enDep)}
                           </div>
-                          <div style={{fontSize:10,color:C.muted,marginBottom:8}}>
-                            Déposé par <strong style={{color:C.text}}>{ent.user_depot}</strong> · {fmtDateTime(enDep)}
-                          </div>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:C.muted,marginBottom:3}}>
+                          {/* Ligne 3 : barre + temps */}
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.muted,marginBottom:3}}>
                             <span>{fmtRem(enMs)}</span>
                             <span>{Math.round(enPct)}%</span>
                           </div>
                           <Bar val={enPct} max={100} color={enReady?C.green:C.amber}/>
-                          <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginTop:8}}>
-                            <button onClick={()=>recupEntrepot(ent)} disabled={!enReady} style={{padding:"6px 14px",fontSize:12,fontWeight:700,background:enReady?C.green:"#3a3a3a",color:enReady?"#1a1a1a":C.muted,border:"none",cursor:enReady?"pointer":"not-allowed",opacity:enReady?1:0.6}}>Récupérer</button>
-                            {isAdmin&&<button onClick={()=>delEntrepot(ent)} style={{color:C.red,fontSize:11,padding:"4px 10px"}}>×</button>}
+                          {/* Ligne 4 : actions */}
+                          <div style={{display:"flex",justifyContent:"flex-end",gap:4,marginTop:6}}>
+                            <button onClick={()=>recupEntrepot(ent)} disabled={!enReady} style={{padding:"4px 10px",fontSize:11,fontWeight:700,background:enReady?C.green:"#3a3a3a",color:enReady?"#1a1a1a":C.muted,border:"none",cursor:enReady?"pointer":"not-allowed",opacity:enReady?1:0.6}}>Récupérer</button>
+                            {isAdmin&&<button onClick={()=>delEntrepot(ent)} style={{color:C.red,fontSize:11,padding:"3px 7px"}}>×</button>}
                           </div>
                         </div>
                       );
