@@ -2361,15 +2361,16 @@ function Main({cu,setCu,onLogout}){
                   <div style={{borderTop:entrepots.length>0?"1px solid "+C.border:"none",paddingTop:entrepots.length>0?12:0}}>
                     <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"end"}}>
                       <div>
-                        <div style={S.lbl}>Montant à recevoir ($)</div>
+                        <div style={S.lbl}>Valeur de la caisse ($)</div>
                         <input type="number" min="1" placeholder="ex: 45000" value={enAmount} onChange={e=>setEnAmount(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&enPreviewAmount>0){startEntrepot(enAmount);setEnAmount("");}}} style={{width:"100%"}}/>
                       </div>
                       <button onClick={()=>{startEntrepot(enAmount);setEnAmount("");}} disabled={enPreviewAmount<=0} style={{padding:"10px 26px",fontWeight:700,fontSize:13,letterSpacing:"0.05em",textTransform:"uppercase",background:enPreviewAmount>0?C.amber:"#3a3a3a",color:enPreviewAmount>0?"#1a1a1a":C.muted,border:"none",borderRadius:6,transition:"background .2s"}} onMouseEnter={e=>{if(enPreviewAmount>0)e.currentTarget.style.background=C.amberBright;}} onMouseLeave={e=>{if(enPreviewAmount>0)e.currentTarget.style.background=C.amber;}}>Déposer</button>
                     </div>
-                    <div style={{marginTop:8,fontSize:12,color:C.muted}}>
-                      {enPreviewAmount<=0?"Saisis le montant que tu vas récupérer (caisse de 750kg, durée 24h)."
-                      :<>Durée fixe : <strong style={{color:C.text}}>24h</strong> · Récupération vers <strong style={{color:C.green}}>{fmtTime(enPreviewEnd)}</strong></>}
-                    </div>
+                    {enPreviewAmount>0&&(
+                      <div style={{marginTop:8,fontSize:12,color:C.muted}}>
+                        Récupération vers <strong style={{color:C.green}}>{fmtTime(enPreviewEnd)}</strong>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
