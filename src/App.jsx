@@ -2829,6 +2829,7 @@ function StatsView({history,blanchHistory,pms,pmGroupes,setTab,setHFil,setHFrom,
         <h3 style={{fontSize:16,fontWeight:600,margin:0,color:C.text}}>Stats</h3>
         <div style={{display:"flex",gap:4,background:"#252525",padding:3,borderRadius:8,border:"1px solid "+C.border,flexWrap:"wrap"}}>
           <button onClick={()=>setPeriod("today")} style={periodBtn("today")}>Aujourd'hui</button>
+          <button onClick={()=>setPeriod("3")} style={periodBtn("3")}>3 jours</button>
           <button onClick={()=>setPeriod("7")} style={periodBtn("7")}>7 jours</button>
           <button onClick={()=>setPeriod("30")} style={periodBtn("30")}>30 jours</button>
           <button onClick={()=>setPeriod("total")} style={periodBtn("total")}>Total</button>
