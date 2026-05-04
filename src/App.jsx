@@ -2234,7 +2234,10 @@ function Main({cu,setCu,onLogout}){
             </div>
           </div>
 
-          <div style={{...card,marginBottom:16,borderLeft:"3px solid "+C.amber}}>
+          {/* BLANCHISSERIE + ENTREPÔTS côte à côte (2 colonnes) */}
+          <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+
+          <div style={{...card,marginBottom:0,borderLeft:"3px solid "+C.amber}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:10,fontWeight:700,color:C.amber,textTransform:"uppercase",letterSpacing:"0.12em"}}>Blanchisserie</span>
@@ -2293,13 +2296,13 @@ function Main({cu,setCu,onLogout}){
             )}
           </div>
 
-          {/* ENTREPÔTS — 2 slots côte à côte, formulaire de dépôt si <2 actifs */}
+          {/* ENTREPÔTS — 2 slots empilés (vu qu'on est sur 1 demi-largeur), formulaire de dépôt si <2 actifs */}
           {(()=>{
             const enAvailable = entrepots.length < 2;
             const enPreviewAmount = +enAmount||0;
             const enPreviewEnd = enPreviewAmount>0?new Date(Date.now()+24*3600000):null;
             return (
-              <div style={{...card,marginTop:16,borderLeft:"3px solid "+C.amber,padding:"14px 18px"}}>
+              <div style={{...card,marginBottom:0,borderLeft:"3px solid "+C.amber,padding:"14px 18px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <span style={{fontSize:10,fontWeight:700,color:C.amber,textTransform:"uppercase",letterSpacing:"0.12em"}}>Entrepôts</span>
@@ -2312,9 +2315,9 @@ function Main({cu,setCu,onLogout}){
                   </div>
                 </div>
 
-                {/* Liste des entrepôts actifs (1 ou 2) */}
+                {/* Liste des entrepôts actifs (1 ou 2) - empilés vu la place restreinte */}
                 {entrepots.length>0&&(
-                  <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:entrepots.length===1?"1fr":"1fr 1fr",gap:12,marginBottom:enAvailable?14:0}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:enAvailable?14:0}}>
                     {entrepots.map((ent,idx)=>{
                       const enRec = new Date(ent.recup_at);
                       const enDep = new Date(ent.depot_at);
@@ -2369,12 +2372,12 @@ function Main({cu,setCu,onLogout}){
                     </div>
                   </div>
                 )}
-                {!enAvailable&&(
-                  <div style={{fontSize:11,color:C.red,marginTop:6,fontStyle:"italic"}}>⚠ Limite atteinte (2/2). Récupère ou supprime un entrepôt pour en déposer un nouveau.</div>
-                )}
               </div>
             );
           })()}
+
+          </div>
+          {/* Fin grid 2-cols Blanchisserie + Entrepôts */}
 
           {/* COMPTES MEMBRES — style "tableau dense" : cellules collées avec bordures fines */}
           <div style={{display:"flex",alignItems:"center",gap:8,margin:"24px 0 10px"}}>
