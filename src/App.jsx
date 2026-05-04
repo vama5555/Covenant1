@@ -1231,10 +1231,11 @@ function Main({cu,setCu,onLogout}){
 
   // Totaux sur les transactions filtrées (Historique)
   const totauxH=useMemo(()=>{
-    let liasseQte=0, liasseFace=0, objQte=0, objRevente=0, payePM=0, sale=0;
+    let liasseQte=0, liasseFace=0, objQte=0, objRevente=0, payePM=0, payeGang=0, sale=0;
     filtH.forEach(h=>{
-      // Payé total
-      payePM += (+h.total||0);
+      // Payé total séparé : PM ou Gang
+      if(h.dest==="gang") payeGang += (+h.total||0);
+      else payePM += (+h.total||0);
       // Objets : qte cumulée + valeur de revente (prix × qte)
       if(h.types?.includes("objets")&&h.lignes){
         h.lignes.forEach(l=>{
@@ -1255,7 +1256,7 @@ function Main({cu,setCu,onLogout}){
         sale += (+h.argent_sale||0);
       }
     });
-    return {liasseQte,liasseFace,objQte,objRevente,payePM:Math.round(payePM),sale:Math.round(sale)};
+    return {liasseQte,liasseFace,objQte,objRevente,payePM:Math.round(payePM),payeGang:Math.round(payeGang),sale:Math.round(sale)};
   },[filtH]);
 
   const [apCatF,setApCatF]=useState("");
@@ -2257,11 +2258,12 @@ function Main({cu,setCu,onLogout}){
       {tab==="historique"&&(
         <div>
           <style>{`
-            .cv-stats-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#404040;border:1px solid #505050;border-radius:10px;overflow:hidden;margin-bottom:14px;}
+            .cv-stats-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:#404040;border:1px solid #505050;border-radius:10px;overflow:hidden;margin-bottom:14px;}
             .cv-stat-box{background:#2f2f2f;padding:10px 14px;display:flex;flex-direction:column;gap:3px;}
             .cv-stat-label{font-size:9px;font-weight:600;color:#a0a0a0;text-transform:uppercase;letter-spacing:0.08em;}
             .cv-stat-value{font-size:16px;font-weight:700;color:#f0f0f0;line-height:1.1;}
             .cv-stat-sub{font-size:10px;color:#888;}
+            @media (max-width:1000px){.cv-stats-strip{grid-template-columns:repeat(3,1fr);}}
             @media (max-width:700px){.cv-stats-strip{grid-template-columns:1fr 1fr;}.cv-stat-value{font-size:14px;}}
             @media (max-width:420px){.cv-stats-strip{grid-template-columns:1fr;}}
           `}</style>
@@ -2295,6 +2297,10 @@ function Main({cu,setCu,onLogout}){
               <div className="cv-stat-box">
                 <div className="cv-stat-label">Payé aux PM</div>
                 <div className="cv-stat-value" style={{color:C.green}}>{fmt(totauxH.payePM)}</div>
+              </div>
+              <div className="cv-stat-box">
+                <div className="cv-stat-label">Payé aux gangs</div>
+                <div className="cv-stat-value" style={{color:C.red}}>{fmt(totauxH.payeGang)}</div>
               </div>
               <div className="cv-stat-box">
                 <div className="cv-stat-label">Sale généré</div>
@@ -2353,7 +2359,7 @@ function Main({cu,setCu,onLogout}){
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:15,fontWeight:700,color:C.red}}>{fmt(h.total)}</div>
+                        <div style={{fontSize:15,fontWeight:700,color:h.dest==="gang"?C.red:C.green}}>{fmt(h.total)}</div>
                         {totPoidsH>0&&<div style={{fontSize:11,color:C.blue}}>{fmtKgD(totPoidsH)}</div>}
                         <div style={{fontSize:11,color:C.muted}}>{h.date}</div>
                       </div>
@@ -2377,12 +2383,12 @@ function Main({cu,setCu,onLogout}){
                         return (
                           <div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
                             <span>{l.nom} × {l.qte} ({fmt(prixUnitPaye)}/u){l.poids>0&&" · "+fmtKgD(l.poids)}</span>
-                            <span style={{color:C.red,fontWeight:600}}>{fmt(Math.round(l.sous_total))}</span>
+                            <span style={{color:h.dest==="gang"?C.red:C.green,fontWeight:600}}>{fmt(Math.round(l.sous_total))}</span>
                           </div>
                         );
                       })}
-                      {h.types?.includes("liasses")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Liasses × {h.liasse_qte} ({h.taux_liasse}$/u) · {fmtKgD((h.liasse_qte||0)*0.1)}</span><span style={{color:C.red,fontWeight:600}}>{fmt(h.taux_liasse*h.liasse_qte)}</span></div>}
-                      {h.types?.includes("argent")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Argent sale : {fmt(h.argent_sale)} (40%)</span><span style={{color:C.red,fontWeight:600}}>{fmt(Math.round(h.argent_sale*0.4))}</span></div>}
+                      {h.types?.includes("liasses")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Liasses × {h.liasse_qte} ({h.taux_liasse}$/u) · {fmtKgD((h.liasse_qte||0)*0.1)}</span><span style={{color:h.dest==="gang"?C.red:C.green,fontWeight:600}}>{fmt(h.taux_liasse*h.liasse_qte)}</span></div>}
+                      {h.types?.includes("argent")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Argent sale : {fmt(h.argent_sale)} (40%)</span><span style={{color:h.dest==="gang"?C.red:C.green,fontWeight:600}}>{fmt(Math.round(h.argent_sale*0.4))}</span></div>}
                       {h.note&&<div style={{marginTop:6,fontStyle:"italic"}}>{h.note}</div>}
                     </div>
                   )}
