@@ -403,17 +403,34 @@ function ItemsSection({title,pct,items,qtes,onChangeQte,accent}){
 
 // ── Carte d'un compte membre avec save sur blur / Entrée ──
 function MemberCard({m,low,setMembers,onLog,dense,idx,total}){
-  const [val,setVal]=useState(String(m.solde));
+  // Helper : formater un nombre avec des espaces tous les 3 chiffres
+  const fmtNum = (n) => {
+    const s = String(n||"");
+    // Retire tout sauf chiffres et signe -
+    const clean = s.replace(/[^\d-]/g,"");
+    if(!clean) return "";
+    const neg = clean.startsWith("-");
+    const digits = clean.replace(/-/g,"");
+    if(!digits) return neg?"-":"";
+    return (neg?"-":"") + digits.replace(/\B(?=(\d{3})+(?!\d))/g," ");
+  };
+  // Helper : extraire la valeur numérique brute (sans espaces)
+  const parseNum = (s) => {
+    const clean = String(s||"").replace(/[^\d-]/g,"");
+    return +clean || 0;
+  };
+
+  const [val,setVal]=useState(fmtNum(m.solde));
   const [status,setStatus]=useState(null);
   const [dirty,setDirty]=useState(false);
 
   useEffect(()=>{
-    if(!dirty) setVal(String(m.solde));
+    if(!dirty) setVal(fmtNum(m.solde));
   },[m.solde,dirty]);
 
   async function save(){
-    const s=Math.round(+val||0);
-    if(s===m.solde){setDirty(false);return;}
+    const s=Math.round(parseNum(val));
+    if(s===m.solde){setDirty(false);setVal(fmtNum(m.solde));return;}
     const before=m.solde;
     setStatus("saving");
     const {error}=await sb.from("membres_comptes").update({solde:s}).eq("id",m.id);
@@ -424,9 +441,17 @@ function MemberCard({m,low,setMembers,onLog,dense,idx,total}){
     }
     setMembers(ms=>ms.map(x=>x.id===m.id?{...x,solde:s}:x));
     setDirty(false);
+    setVal(fmtNum(s));
     setStatus("saved");
     setTimeout(()=>setStatus(null),1500);
     if(onLog) onLog("money","balance_update",`a modifié le solde de <b>${m.nom}</b> : ${`<b>${fmt(before)}</b> → <b>${fmt(s)}</b>`}`);
+  }
+
+  function handleChange(e){
+    // Reformate à la volée pendant la saisie
+    const formatted = fmtNum(e.target.value);
+    setVal(formatted);
+    setDirty(true);
   }
 
   // Mode dense : cellule de tableau (bordures gérées par le grid parent via gap)
@@ -446,9 +471,10 @@ function MemberCard({m,low,setMembers,onLog,dense,idx,total}){
         </div>
         <div style={{display:"flex",alignItems:"baseline",gap:3}}>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             value={val}
-            onChange={e=>{setVal(e.target.value);setDirty(true);}}
+            onChange={handleChange}
             onBlur={save}
             onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();}}}
             style={{flex:1,fontSize:18,fontWeight:700,border:"none!important",background:"transparent!important",color:low?C.red:C.text,padding:"0!important",minWidth:0,boxShadow:"none!important"}}
@@ -477,9 +503,10 @@ function MemberCard({m,low,setMembers,onLog,dense,idx,total}){
       </div>
       <div style={{display:"flex",alignItems:"center",gap:4}}>
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           value={val}
-          onChange={e=>{setVal(e.target.value);setDirty(true);}}
+          onChange={handleChange}
           onBlur={save}
           onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();}}}
           style={{flex:1,fontSize:20,fontWeight:700,border:"none!important",background:"transparent!important",color:low?C.red:C.text,padding:"0!important",minWidth:0,boxShadow:"none!important"}}
@@ -2326,7 +2353,7 @@ function Main({cu,setCu,onLogout}){
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       <div style={{textAlign:"right"}}>
-                        <div style={{fontSize:15,fontWeight:700,color:C.green}}>{fmt(h.total)}</div>
+                        <div style={{fontSize:15,fontWeight:700,color:C.red}}>{fmt(h.total)}</div>
                         {totPoidsH>0&&<div style={{fontSize:11,color:C.blue}}>{fmtKgD(totPoidsH)}</div>}
                         <div style={{fontSize:11,color:C.muted}}>{h.date}</div>
                       </div>
@@ -2350,12 +2377,12 @@ function Main({cu,setCu,onLogout}){
                         return (
                           <div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
                             <span>{l.nom} × {l.qte} ({fmt(prixUnitPaye)}/u){l.poids>0&&" · "+fmtKgD(l.poids)}</span>
-                            <span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(l.sous_total))}</span>
+                            <span style={{color:C.red,fontWeight:600}}>{fmt(Math.round(l.sous_total))}</span>
                           </div>
                         );
                       })}
-                      {h.types?.includes("liasses")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Liasses × {h.liasse_qte} ({h.taux_liasse}$/u) · {fmtKgD((h.liasse_qte||0)*0.1)}</span><span style={{color:C.green,fontWeight:600}}>{fmt(h.taux_liasse*h.liasse_qte)}</span></div>}
-                      {h.types?.includes("argent")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Argent sale : {fmt(h.argent_sale)} (40%)</span><span style={{color:C.green,fontWeight:600}}>{fmt(Math.round(h.argent_sale*0.4))}</span></div>}
+                      {h.types?.includes("liasses")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Liasses × {h.liasse_qte} ({h.taux_liasse}$/u) · {fmtKgD((h.liasse_qte||0)*0.1)}</span><span style={{color:C.red,fontWeight:600}}>{fmt(h.taux_liasse*h.liasse_qte)}</span></div>}
+                      {h.types?.includes("argent")&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span>Argent sale : {fmt(h.argent_sale)} (40%)</span><span style={{color:C.red,fontWeight:600}}>{fmt(Math.round(h.argent_sale*0.4))}</span></div>}
                       {h.note&&<div style={{marginTop:6,fontStyle:"italic"}}>{h.note}</div>}
                     </div>
                   )}
