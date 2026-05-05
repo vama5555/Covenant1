@@ -1176,6 +1176,108 @@ function EditItemForm({item,onSave,onCancel,isPM}){
   );
 }
 
+// ── IListImpl : liste d'items avec œil + poids (top-level pour préserver le focus dans AddItemForm)
+// Auparavant défini à l'intérieur d'AppInner, ce qui le recréait à chaque render et démontait
+// les inputs (perte de focus pendant la saisie). Top-level = identité stable = inputs préservés.
+function IListImpl({items,setItems,table,eId,setEId,canEdit,target,allKey,
+                    log,exportCSV,triggerImport,toggleItemVisibility,showAll,setShowAll}){
+  const isPM = table==="items_pm";
+
+  async function save(it){
+    const before = items.find(x=>x.id===it.id);
+    await sb.from(table).update({nom:it.nom,prix:it.prix,poids:+it.poids||0}).eq("id",it.id);
+    setItems(is=>is.map(x=>x.id===it.id?it:x));
+    setEId(null);
+    if(before){
+      const ch=[];
+      if(before.nom!==it.nom)ch.push(`nom : ${diff(before.nom,it.nom)}`);
+      if(+before.prix!==+it.prix)ch.push(`prix : ${diff(fmt(before.prix),fmt(it.prix))}`);
+      if(+(before.poids||0)!==+(it.poids||0))ch.push(`poids : ${diff(fmtKgD(before.poids||0),fmtKgD(it.poids||0))}`);
+      if(ch.length>0) log("items","update",`a modifié l'item ${isPM?"PM":"gang"} <b>${it.nom}</b> · ${ch.join(" · ")}`);
+    }
+  }
+  async function add(nom,prix,poids){
+    const payload={nom,prix:+prix,poids:+poids||0,visible:true};
+    const{data}=await sb.from(table).insert(payload).select().single();
+    if(data){
+      setItems(p=>[...p,data]);
+      log("items","create",`a créé l'item ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${fmt(data.prix)}${data.poids>0?" · "+fmtKgD(data.poids):""}`);
+    }
+  }
+  async function del(id){
+    const it = items.find(x=>x.id===id);
+    await sb.from(table).delete().eq("id",id);
+    setItems(is=>is.filter(x=>x.id!==id));
+    if(it) log("items","delete",`a supprimé l'item ${isPM?"PM":"gang"} <b>${it.nom}</b>`);
+  }
+
+  const visibleCount = items.filter(it=>it.visible!==false).length;
+  const isAll = showAll[allKey];
+  const displayed = isAll ? items : items.slice(0, PREVIEW);
+
+  return (
+    <>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <span style={{fontSize:11,color:C.muted}}>{visibleCount} visible{visibleCount>1?"s":""} / {items.length} total</span>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>exportCSV(target)} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
+          {canEdit&&<button onClick={()=>triggerImport(target)} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
+        </div>
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"0 4px 6px",fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",borderBottom:"1px solid "+C.border,marginBottom:4}}>
+        <span style={{width:30}}></span>
+        <span style={{flex:1}}>Nom</span>
+        <span data-mobile="col-prix" style={{width:70,textAlign:"right"}}>Prix</span>
+        <span data-mobile="col-poids" style={{width:65,textAlign:"right"}}>Poids</span>
+        {canEdit&&<span data-mobile="col-actions" style={{width:80}}></span>}
+      </div>
+
+      {displayed.map(it=>{
+        const visible = it.visible!==false;
+        return (
+          <div key={it.id} data-mobile="item-row" style={{...S.row,opacity:visible?1:0.45,transition:"opacity .25s",borderBottom:"1px solid #404040",paddingBottom:6,marginBottom:4}}>
+            {canEdit
+              ? <button onClick={()=>toggleItemVisibility(it,table,setItems)}
+                  title={visible?"Masquer cet item dans Transactions":"Rendre visible dans Transactions"}
+                  style={{width:30,padding:"3px 0",background:"transparent",border:"none",cursor:"pointer",color:visible?C.muted:C.red,fontSize:14,boxShadow:"none"}}>
+                  {visible?"👁":"🚫"}
+                </button>
+              : <span style={{width:30,textAlign:"center",fontSize:13,color:visible?C.muted:C.red}}>{visible?"👁":"🚫"}</span>
+            }
+
+            {canEdit && eId===it.id
+              ? <EditItemForm item={it} onSave={save} onCancel={()=>setEId(null)} isPM={isPM}/>
+              : <>
+                  <span style={{flex:1,minWidth:0,fontSize:14,color:C.text,wordBreak:"break-word"}}>
+                    {it.nom}
+                    {!visible&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(224,85,85,0.15)",color:C.red,border:"1px solid rgba(224,85,85,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:6}}>masqué</span>}
+                  </span>
+                  <span data-mobile="col-prix" style={{width:70,fontSize:13,color:C.muted,textAlign:"right",whiteSpace:"nowrap"}}>{fmt(it.prix)}</span>
+                  <span data-mobile="col-poids" style={{width:65,fontSize:13,color:C.blue,textAlign:"right",whiteSpace:"nowrap"}}>{fmtKgD(it.poids||0)}</span>
+                  {canEdit && <div data-mobile="col-actions" style={{display:"flex",gap:4,width:80,justifyContent:"flex-end"}}>
+                    <button onClick={()=>setEId(it.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
+                    <button onClick={()=>del(it.id)} style={{color:C.red,fontSize:11,padding:"3px 8px"}}>×</button>
+                  </div>}
+                </>
+            }
+          </div>
+        );
+      })}
+
+      {items.length>PREVIEW && (
+        <div style={{textAlign:"center",margin:"6px 0 4px"}}>
+          <button onClick={()=>setShowAll(s=>({...s,[allKey]:!isAll}))} style={{fontSize:11,padding:"5px 14px",background:"transparent",border:"1px dashed "+C.border,color:C.muted}}>
+            {isAll?"Réduire ↑":`Voir tout (${items.length}) ↓`}
+          </button>
+        </div>
+      )}
+
+      {canEdit && <AddItemForm onAdd={add}/>}
+    </>
+  );
+}
+
 // Formulaire d'ajout d'une commande reçue (gang + multi-items + note)
 const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, stockLondres, onAdd}){
   const [gangId, setGangId] = useState("");
@@ -2604,102 +2706,9 @@ function Main({cu,setCu,onLogout}){
     </>;
   }
 
-  // ── Liste d'items avec œil + poids (avec affichage partiel) ──
-  function IList({items,setItems,table,eId,setEId,ni,setNi,canEdit,target,allKey}){
-    const isPM=table==="items_pm";
-    async function save(it){
-      const before=items.find(x=>x.id===it.id);
-      await sb.from(table).update({nom:it.nom,prix:it.prix,poids:+it.poids||0}).eq("id",it.id);
-      setItems(is=>is.map(x=>x.id===it.id?it:x));
-      setEId(null);
-      if(before){
-        const ch=[];
-        if(before.nom!==it.nom)ch.push(`nom : ${diff(before.nom,it.nom)}`);
-        if(+before.prix!==+it.prix)ch.push(`prix : ${diff(fmt(before.prix),fmt(it.prix))}`);
-        if(+(before.poids||0)!==+(it.poids||0))ch.push(`poids : ${diff(fmtKgD(before.poids||0),fmtKgD(it.poids||0))}`);
-        if(ch.length>0) log("items","update",`a modifié l'item ${isPM?"PM":"gang"} <b>${it.nom}</b> · ${ch.join(" · ")}`);
-      }
-    }
-    async function add(nom,prix,poids){
-      const payload={nom,prix:+prix,poids:+poids||0,visible:true};
-      const{data}=await sb.from(table).insert(payload).select().single();
-      if(data){
-        setItems(p=>[...p,data]);
-        log("items","create",`a créé l'item ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${fmt(data.prix)}${data.poids>0?" · "+fmtKgD(data.poids):""}`);
-      }
-    }
-    async function del(id){
-      const it=items.find(x=>x.id===id);
-      await sb.from(table).delete().eq("id",id);
-      setItems(is=>is.filter(x=>x.id!==id));
-      if(it) log("items","delete",`a supprimé l'item ${isPM?"PM":"gang"} <b>${it.nom}</b>`);
-    }
+  // ── Liste d'items avec œil + poids — IList est défini au top-level (IListImpl)
+  // pour éviter qu'il soit recréé à chaque render du parent (perte de focus dans AddItemForm).
 
-    const visibleCount=items.filter(it=>it.visible!==false).length;
-    const isAll=showAll[allKey];
-    const displayed=isAll?items:items.slice(0,PREVIEW);
-
-    return <>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <span style={{fontSize:11,color:C.muted}}>{visibleCount} visible{visibleCount>1?"s":""} / {items.length} total</span>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>exportCSV(target)} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
-          {canEdit&&<button onClick={()=>triggerImport(target)} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
-        </div>
-      </div>
-
-      <div style={{display:"flex",alignItems:"center",gap:8,padding:"0 4px 6px",fontSize:9,color:C.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",borderBottom:"1px solid "+C.border,marginBottom:4}}>
-        <span style={{width:30}}></span>
-        <span style={{flex:1}}>Nom</span>
-        <span data-mobile="col-prix" style={{width:70,textAlign:"right"}}>Prix</span>
-        <span data-mobile="col-poids" style={{width:65,textAlign:"right"}}>Poids</span>
-        {canEdit&&<span data-mobile="col-actions" style={{width:80}}></span>}
-      </div>
-
-      {displayed.map(it=>{
-        const visible=it.visible!==false;
-        return (
-          <div key={it.id} data-mobile="item-row" style={{...S.row,opacity:visible?1:0.45,transition:"opacity .25s",borderBottom:"1px solid #404040",paddingBottom:6,marginBottom:4}}>
-            {canEdit
-              ?<button onClick={()=>toggleItemVisibility(it,table,setItems)}
-                title={visible?"Masquer cet item dans Transactions":"Rendre visible dans Transactions"}
-                style={{width:30,padding:"3px 0",background:"transparent",border:"none",cursor:"pointer",color:visible?C.muted:C.red,fontSize:14,boxShadow:"none"}}>
-                {visible?"👁":"🚫"}
-              </button>
-              :<span style={{width:30,textAlign:"center",fontSize:13,color:visible?C.muted:C.red}}>{visible?"👁":"🚫"}</span>
-            }
-
-            {canEdit&&eId===it.id
-              ?<EditItemForm item={it} onSave={save} onCancel={()=>setEId(null)} isPM={isPM}/>
-              :<>
-                <span style={{flex:1,minWidth:0,fontSize:14,color:C.text,wordBreak:"break-word"}}>
-                  {it.nom}
-                  {!visible&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(224,85,85,0.15)",color:C.red,border:"1px solid rgba(224,85,85,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:6}}>masqué</span>}
-                </span>
-                <span data-mobile="col-prix" style={{width:70,fontSize:13,color:C.muted,textAlign:"right",whiteSpace:"nowrap"}}>{fmt(it.prix)}</span>
-                <span data-mobile="col-poids" style={{width:65,fontSize:13,color:C.blue,textAlign:"right",whiteSpace:"nowrap"}}>{fmtKgD(it.poids||0)}</span>
-                {canEdit&&<div data-mobile="col-actions" style={{display:"flex",gap:4,width:80,justifyContent:"flex-end"}}>
-                  <button onClick={()=>setEId(it.id)} style={{fontSize:11,padding:"3px 8px"}}>Mod.</button>
-                  <button onClick={()=>del(it.id)} style={{color:C.red,fontSize:11,padding:"3px 8px"}}>×</button>
-                </div>}
-              </>
-            }
-          </div>
-        );
-      })}
-
-      {/* Bouton Voir tout / Réduire */}
-      {items.length>PREVIEW&&(
-        <div style={{textAlign:"center",margin:"6px 0 4px"}}>
-          <button onClick={()=>setShowAll(s=>({...s,[allKey]:!isAll}))} style={{fontSize:11,padding:"5px 14px",background:"transparent",border:"1px dashed "+C.border,color:C.muted}}>
-            {isAll?"Réduire ↑":`Voir tout (${items.length}) ↓`}
-          </button>
-        </div>
-      )}
-
-      {canEdit&&<AddItemForm onAdd={add}/>}
-    </>;
-  }
 
   async function addAppart(){
     if(!nAp.nom)return;
@@ -3783,8 +3792,8 @@ function Main({cu,setCu,onLogout}){
           </div>
           {/* Ligne 4 : Items PM + Items gangs */}
           <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-            <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IList items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm" allKey="itemsPM"/></div>
-            <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IList items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="items_gang" allKey="itemsG"/></div>
+            <div style={card}><div style={S.sec}>Items PM{!isAdmin&&" · lecture seule"}</div><IListImpl items={itemsPM} setItems={setItemsPM} table="items_pm" eId={eIPM} setEId={setEIPM} ni={nIPM} setNi={setNIPM} canEdit={isAdmin} target="items_pm" allKey="itemsPM" log={log} exportCSV={exportCSV} triggerImport={triggerImport} toggleItemVisibility={toggleItemVisibility} showAll={showAll} setShowAll={setShowAll}/></div>
+            <div style={card}><div style={S.sec}>Items gangs{!isAdmin&&" · lecture seule"}</div><IListImpl items={itemsG} setItems={setItemsG} table="items_gang" eId={eIG} setEId={setEIG} ni={nIG} setNi={setNIG} canEdit={isAdmin} target="items_gang" allKey="itemsG" log={log} exportCSV={exportCSV} triggerImport={triggerImport} toggleItemVisibility={toggleItemVisibility} showAll={showAll} setShowAll={setShowAll}/></div>
           </div>
 
           {isAdmin&&(
