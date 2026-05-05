@@ -87,6 +87,74 @@ function MoneyInput({value, onChange, placeholder, style, onKeyDown, ...rest}){
     />
   );
 }
+
+// ── StockRow : ligne de stock avec saisie locale (commit sur blur/Enter) ──
+// Évite que chaque touche déclenche un setState global + une requête BDD,
+// ce qui pouvait réinitialiser le focus et bloquer la saisie multi-chiffres.
+function StockRow({stock, isAdmin, onUpdateQty, onUpdateSeuil, onRemove}){
+  const [qtyDraft, setQtyDraft] = useState(String(stock.quantite ?? 0));
+  const [seuilDraft, setSeuilDraft] = useState(String(stock.seuil ?? 0));
+
+  // Resync si la valeur stockée change ailleurs (livraison qui décrémente, etc.)
+  useEffect(()=>{ setQtyDraft(String(stock.quantite ?? 0)); }, [stock.quantite]);
+  useEffect(()=>{ setSeuilDraft(String(stock.seuil ?? 0)); }, [stock.seuil]);
+
+  const qty = Number(qtyDraft) || 0;
+  const seuil = Number(seuilDraft) || 0;
+  const isLow = qty < seuil;
+
+  function commitQty(){
+    const v = Math.max(0, Number(qtyDraft)||0);
+    if(v !== Number(stock.quantite)) onUpdateQty(stock.id, v);
+    setQtyDraft(String(v));
+  }
+  function commitSeuil(){
+    const v = Math.max(0, Number(seuilDraft)||0);
+    if(v !== Number(stock.seuil)) onUpdateSeuil(stock.id, v);
+    setSeuilDraft(String(v));
+  }
+
+  return (
+    <div style={{
+      display:"flex",
+      alignItems:"center",
+      gap:8,
+      background:isLow?"rgba(223,90,68,0.06)":C.surfaceAlt,
+      border:"1px solid "+(isLow?"rgba(223,90,68,0.3)":C.border),
+      borderRadius:6,
+      padding:"6px 10px",
+      minHeight:40
+    }}>
+      <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:600,color:isLow?C.red:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={stock.item_nom}>
+        {stock.item_nom}
+      </span>
+      <input
+        type="number"
+        min="0"
+        value={qtyDraft}
+        onChange={e=>setQtyDraft(e.target.value)}
+        onBlur={commitQty}
+        onKeyDown={e=>{ if(e.key==="Enter") e.target.blur(); }}
+        style={{width:54,fontSize:14,fontWeight:700,textAlign:"center",padding:"3px 4px",color:isLow?C.red:C.text}}
+        title="Stock actuel"
+      />
+      <span style={{fontSize:12,color:C.dim}}>/</span>
+      <input
+        type="number"
+        min="0"
+        value={seuilDraft}
+        onChange={e=>setSeuilDraft(e.target.value)}
+        onBlur={commitSeuil}
+        onKeyDown={e=>{ if(e.key==="Enter") e.target.blur(); }}
+        style={{width:46,fontSize:12,textAlign:"center",padding:"3px 4px",color:C.muted}}
+        title="Seuil d'alerte"
+      />
+      {isAdmin && (
+        <button onClick={onRemove} style={{fontSize:12,padding:"2px 6px",color:C.red,lineHeight:1}} title="Retirer du suivi">×</button>
+      )}
+    </div>
+  );
+}
 const G=`*{box-sizing:border-box;}
 @keyframes cv-spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
 @keyframes cv-pulse{0%,100%{opacity:0.4;}50%{opacity:1;}}
@@ -1915,7 +1983,7 @@ function Main({cu,setCu,onLogout}){
   // Totaux sur les transactions filtrées (Historique)
   // Items en stock bas (sous le seuil) — utilisé pour l'alerte du tableau de bord
   const stockBas = useMemo(()=>{
-    return stockLondres.filter(s => (+s.quantite||0) < (+s.seuil||0));
+    return stockLondres.filter(s => (Number(s.quantite)||0) < (Number(s.seuil)||0));
   },[stockLondres]);
 
   const totauxH=useMemo(()=>{
@@ -3618,43 +3686,20 @@ function Main({cu,setCu,onLogout}){
               </div>
             ) : (
               <div data-mobile="stock-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-                {stockLondres.map(s=>{
-                  const isLow = (+s.quantite||0) < (+s.seuil||0);
-                  return (
-                    <div key={s.id} style={{
-                      display:"flex",
-                      alignItems:"center",
-                      gap:8,
-                      background:isLow?"rgba(223,90,68,0.06)":C.surfaceAlt,
-                      border:"1px solid "+(isLow?"rgba(223,90,68,0.3)":C.border),
-                      borderRadius:6,
-                      padding:"6px 10px",
-                      minHeight:40
-                    }}>
-                      <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:600,color:isLow?C.red:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={s.item_nom}>
-                        {s.item_nom}
-                      </span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={s.quantite}
-                        onChange={e=>updateStockQty(s.id, e.target.value)}
-                        style={{width:54,fontSize:14,fontWeight:700,textAlign:"center",padding:"3px 4px",color:isLow?C.red:C.text}}
-                        title="Stock actuel"
-                      />
-                      <span style={{fontSize:12,color:C.dim}}>/</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={s.seuil}
-                        onChange={e=>updateStockSeuil(s.id, e.target.value)}
-                        style={{width:46,fontSize:12,textAlign:"center",padding:"3px 4px",color:C.muted}}
-                        title="Seuil d'alerte"
-                      />
-                      {isAdmin&&<button onClick={async()=>{if(await confirm({title:"Retirer du suivi",message:`Retirer ${s.item_nom} du suivi ?`,confirmLabel:"Retirer",danger:true}))removeStockItem(s.id);}} style={{fontSize:12,padding:"2px 6px",color:C.red,lineHeight:1}} title="Retirer du suivi">×</button>}
-                    </div>
-                  );
-                })}
+                {stockLondres.map(s => (
+                  <StockRow
+                    key={s.id}
+                    stock={s}
+                    isAdmin={isAdmin}
+                    onUpdateQty={updateStockQty}
+                    onUpdateSeuil={updateStockSeuil}
+                    onRemove={async()=>{
+                      if(await confirm({title:"Retirer du suivi",message:`Retirer ${s.item_nom} du suivi ?`,confirmLabel:"Retirer",danger:true})){
+                        removeStockItem(s.id);
+                      }
+                    }}
+                  />
+                ))}
               </div>
             )}
           </div>
