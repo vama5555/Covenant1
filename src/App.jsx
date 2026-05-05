@@ -240,9 +240,9 @@ function Login({onLogin}){
   </div>;
 }
 
-// ── Gestion de la session persistante (24h) ──
+// ── Gestion de la session persistante (1 semaine) ──
 const SESSION_KEY = "covenant_session";
-const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 heures
+const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 jours
 
 function saveSession(user){
   try {
