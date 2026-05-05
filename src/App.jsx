@@ -3832,12 +3832,17 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
     return Math.round(v);
   },[txInPeriod]);
 
-  // ── Données du graphique d'évolution : sale généré par jour/semaine/mois ──
-  const chartData=useMemo(()=>{
-    if(txInPeriod.length===0) return {data:[], granularity:"day"};
+  // ── Filtres du graphique d'évolution (multi-toggle) ──
+  const [chartFilter, setChartFilter] = useState({pm:true, gang:true, entrepots:true, livraisons:true});
+  const toggleChartFilter = key => setChartFilter(f=>({...f, [key]:!f[key]}));
 
-    // Calculer le sale généré pour une transaction
-    const saleOf = (h) => {
+  // ── Données du graphique d'évolution : sale par jour/semaine/mois selon filtres ──
+  const chartData=useMemo(()=>{
+    // 1) Construire la liste des "événements" {date:'YYYY-MM-DD', sale:number} selon les filtres actifs
+    const events = [];
+
+    // Calculer le sale d'une transaction (PM ou gang)
+    const saleOfTx = (h) => {
       let v=0;
       if(h.types?.includes("objets")&&h.lignes){
         h.lignes.forEach(l=>{ v+=(+l.prix||0)*(+l.qte||0); });
@@ -3851,27 +3856,59 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
       return v;
     };
 
-    // Déterminer la granularité selon la période
-    const dates = txInPeriod.map(h=>h.date).sort();
+    // Transactions PM
+    if(chartFilter.pm){
+      txInPeriod.filter(h=>h.dest==="pm").forEach(h=>{
+        events.push({date:h.date, sale:saleOfTx(h)});
+      });
+    }
+    // Transactions Gang
+    if(chartFilter.gang){
+      txInPeriod.filter(h=>h.dest==="gang").forEach(h=>{
+        events.push({date:h.date, sale:saleOfTx(h)});
+      });
+    }
+    // Entrepôts récupérés (sale tel quel, daté sur recup_at en local)
+    if(chartFilter.entrepots){
+      entrepotsInPeriod.forEach(e=>{
+        if(!e.recup_at) return;
+        // Convertir le timestamp UTC en date LOCALE YYYY-MM-DD
+        const d = new Date(e.recup_at);
+        const dateLocal = _toLocalDate(d);
+        events.push({date:dateLocal, sale:+e.montant||0});
+      });
+    }
+    // Commandes livrées (sale tel quel, daté sur livree_at)
+    if(chartFilter.livraisons){
+      cmdLivreesInPeriod.forEach(c=>{
+        if(!c.livree_at) return;
+        const d = new Date(c.livree_at);
+        const dateLocal = _toLocalDate(d);
+        events.push({date:dateLocal, sale:+c.montant||0});
+      });
+    }
+
+    if(events.length===0) return {data:[], granularity:"day"};
+
+    // 2) Déterminer la granularité selon la période d'événements
+    const dates = events.map(e=>e.date).sort();
     const minDate = new Date(dates[0]+"T00:00:00");
     const maxDate = new Date(dates[dates.length-1]+"T00:00:00");
     const daysDiff = Math.round((maxDate - minDate) / 86400000) + 1;
     const granularity = daysDiff <= 30 ? "day" : daysDiff <= 180 ? "week" : "month";
 
-    // Bucketiser
+    // 3) Bucketiser
     const buckets = new Map();
-    txInPeriod.forEach(h=>{
-      const d = new Date(h.date+"T00:00:00");
+    events.forEach(ev=>{
+      const d = new Date(ev.date+"T00:00:00");
       let key, label;
       if(granularity==="day"){
-        key = h.date;
-        // Format DD/MM
+        key = ev.date;
         const dd=String(d.getDate()).padStart(2,"0");
         const mm=String(d.getMonth()+1).padStart(2,"0");
         label = `${dd}/${mm}`;
       } else if(granularity==="week"){
-        // Lundi de la semaine
-        const dayOfWeek = (d.getDay()+6)%7; // 0=Lundi, 6=Dimanche
+        const dayOfWeek = (d.getDay()+6)%7;
         const monday = new Date(d);
         monday.setDate(d.getDate()-dayOfWeek);
         const yy=monday.getFullYear();
@@ -3887,15 +3924,14 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
         label = `${monthLabels[d.getMonth()]} ${String(yy).slice(2)}`;
       }
       const cur = buckets.get(key) || {key, label, sale:0, count:0};
-      cur.sale += saleOf(h);
+      cur.sale += ev.sale;
       cur.count += 1;
       buckets.set(key, cur);
     });
 
-    // Sort by key (chronological)
     const data = Array.from(buckets.values()).sort((a,b)=>a.key.localeCompare(b.key));
     return {data, granularity};
-  },[txInPeriod]);
+  },[txInPeriod, entrepotsInPeriod, cmdLivreesInPeriod, chartFilter]);
 
   // Total blanchi sur la période
   const blanchInPeriod=useMemo(()=>{
@@ -4109,7 +4145,42 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
         </span>
       </div>
       <div style={{...card,padding:"16px 18px"}}>
-        <BarChart data={chartData.data} granularity={chartData.granularity} color={C.red}/>
+        {/* Filtres multi-source : PM / Gang / Entrepôts / Livraisons */}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+          {[
+            {key:"pm",        label:"PM",         icon:"👤"},
+            {key:"gang",      label:"Gang",       icon:"🏴"},
+            {key:"entrepots", label:"Entrepôts",  icon:"📦"},
+            {key:"livraisons",label:"Livraisons", icon:"🎯"},
+          ].map(f=>{
+            const on=chartFilter[f.key];
+            return (
+              <button
+                key={f.key}
+                onClick={()=>toggleChartFilter(f.key)}
+                style={{
+                  fontSize:11,
+                  padding:"5px 10px",
+                  background:on?"rgba(223,90,68,0.15)":C.surfaceAlt,
+                  color:on?C.red:C.muted,
+                  border:"1px solid "+(on?"rgba(223,90,68,0.4)":C.border),
+                  fontWeight:on?600:400,
+                  opacity:on?1:0.6
+                }}
+                title={on?`Masquer ${f.label}`:`Afficher ${f.label}`}
+              >
+                {on?"●":"○"} {f.icon} {f.label}
+              </button>
+            );
+          })}
+        </div>
+        {chartData.data.length===0 ? (
+          <div style={{textAlign:"center",padding:"40px 20px",color:C.muted,fontSize:12,fontStyle:"italic"}}>
+            Aucune donnée pour les filtres sélectionnés
+          </div>
+        ) : (
+          <BarChart data={chartData.data} granularity={chartData.granularity} color={C.red}/>
+        )}
       </div>
 
       {/* ── Section 2 : Top ── */}
