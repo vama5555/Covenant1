@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef, memo } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef, useContext, createContext, memo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://ppaokymwkazzwwdzjmdb.supabase.co";
@@ -269,7 +269,118 @@ function clearSession(){
   try { localStorage.removeItem(SESSION_KEY); } catch(e){}
 }
 
-export default function App(){
+// ── Système de confirmation custom (remplace window.confirm) ──
+const ConfirmContext = createContext(null);
+
+function ConfirmProvider({children}){
+  // {open, message, title, confirmLabel, cancelLabel, danger, resolve}
+  const [state, setState] = useState(null);
+
+  // confirm("Voulez-vous continuer ?") → Promise<boolean>
+  // confirm({title, message, confirmLabel, cancelLabel, danger:true})
+  const confirm = useCallback((msgOrOpts) => {
+    return new Promise(resolve => {
+      const opts = typeof msgOrOpts === "string"
+        ? {message: msgOrOpts}
+        : (msgOrOpts || {});
+      setState({
+        title: opts.title || "Confirmation",
+        message: opts.message || "Êtes-vous sûr ?",
+        confirmLabel: opts.confirmLabel || "Confirmer",
+        cancelLabel: opts.cancelLabel || "Annuler",
+        danger: !!opts.danger,
+        resolve
+      });
+    });
+  }, []);
+
+  function handleClose(result){
+    if(state) state.resolve(result);
+    setState(null);
+  }
+
+  // Échap = annuler, Entrée = confirmer
+  useEffect(()=>{
+    if(!state) return;
+    const onKey = e => {
+      if(e.key === "Escape"){ e.preventDefault(); handleClose(false); }
+      else if(e.key === "Enter"){ e.preventDefault(); handleClose(true); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  return (
+    <ConfirmContext.Provider value={confirm}>
+      {children}
+      {state && (
+        <div
+          onClick={()=>handleClose(false)}
+          style={{
+            position:"fixed", inset:0, zIndex:9999,
+            background:"rgba(0,0,0,0.6)",
+            display:"flex", alignItems:"center", justifyContent:"center",
+            padding:16,
+            backdropFilter:"blur(2px)"
+          }}
+        >
+          <div
+            onClick={e=>e.stopPropagation()}
+            style={{
+              background:C.surface,
+              border:"1px solid "+C.border,
+              borderRadius:10,
+              padding:"20px 22px",
+              maxWidth:440, width:"100%",
+              boxShadow:"0 12px 48px rgba(0,0,0,0.5)"
+            }}
+          >
+            <div style={{fontSize:14, fontWeight:700, color:C.text, marginBottom:10, textTransform:"uppercase", letterSpacing:"0.06em"}}>
+              {state.title}
+            </div>
+            <div style={{fontSize:13, color:C.muted, lineHeight:1.5, marginBottom:18, whiteSpace:"pre-wrap"}}>
+              {state.message}
+            </div>
+            <div style={{display:"flex", justifyContent:"flex-end", gap:8}}>
+              <button
+                onClick={()=>handleClose(false)}
+                style={{
+                  padding:"8px 16px", fontSize:12, fontWeight:600,
+                  background:"transparent", color:C.muted,
+                  border:"1px solid "+C.border, borderRadius:5, cursor:"pointer"
+                }}
+              >
+                {state.cancelLabel}
+              </button>
+              <button
+                onClick={()=>handleClose(true)}
+                autoFocus
+                style={{
+                  padding:"8px 18px", fontSize:12, fontWeight:700,
+                  background: state.danger ? C.red : C.green,
+                  color: state.danger ? "#fff" : "#1a1a1a",
+                  border:"none", borderRadius:5, cursor:"pointer"
+                }}
+              >
+                {state.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </ConfirmContext.Provider>
+  );
+}
+
+function useConfirm(){
+  const ctx = useContext(ConfirmContext);
+  if(!ctx) return (msg)=>Promise.resolve(window.confirm(typeof msg==="string"?msg:msg?.message||"")); // fallback
+  return ctx;
+}
+
+function AppInner(){
+  const confirm = useConfirm();
   // Initialisation depuis la session persistante (24h)
   const [cu,setCu]=useState(()=>loadSession());
 
@@ -1090,7 +1201,6 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
         <div style={{fontSize:11,color:C.muted,display:"flex",gap:14,flexWrap:"wrap"}}>
-          {totalQte>0&&<span>Total : <strong style={{color:C.text}}>{totalQte}</strong> item{totalQte>1?"s":""}</span>}
           {totalKg>0&&<span>Poids : <strong style={{color:C.blue}}>{fmtKgD(totalKg)}</strong></span>}
           {+montant>0&&<span>Payé <span style={{color:C.red,fontSize:9,fontWeight:700}}>(sale)</span> : <strong style={{color:C.red}}>{fmt(+montant)}</strong></span>}
         </div>
@@ -1427,7 +1537,13 @@ function Main({cu,setCu,onLogout}){
   }
   async function delEntrepot(ent){
     if(!ent || !isAdmin) return;
-    if(!window.confirm(`Supprimer l'entrepôt de ${fmt(ent.montant)} (sans archiver dans l'historique) ?`)) return;
+    const ok = await confirm({
+      title: "Supprimer l'entrepôt",
+      message: `Supprimer l'entrepôt de ${fmt(ent.montant)} (sans archiver dans l'historique) ?`,
+      confirmLabel: "Supprimer",
+      danger: true
+    });
+    if(!ok) return;
     await sb.from("entrepots").delete().eq("id", ent.id);
     setEntrepots(prev => prev.filter(x => x.id !== ent.id));
     log("entrepot","delete",`a supprimé un entrepôt de <b>${fmt(ent.montant)}</b>`);
@@ -1723,7 +1839,7 @@ function Main({cu,setCu,onLogout}){
     });
   }
 
-  const [hFil,setHFil]=useState({who:""});
+  const [hFil,setHFil]=useState({who:"",livraisonDir:"all"});
   const [hType,setHType]=useState("transactions"); // 'transactions' | 'blanchi' | 'entrepots'
   // Options du filtre : on inclut les groupes existants en plus des noms de transactions
   const whoOpts=useMemo(()=>{
@@ -2964,6 +3080,7 @@ function Main({cu,setCu,onLogout}){
           <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
             <select value={hType} onChange={e=>setHType(e.target.value)} style={{flex:"0 1 auto",minWidth:140,fontWeight:600}}>
               <option value="transactions">Transactions</option>
+              <option value="livraisons">Commandes</option>
               <option value="blanchi">Blanchi</option>
               <option value="entrepots">Entrepôts</option>
             </select>
@@ -2975,6 +3092,13 @@ function Main({cu,setCu,onLogout}){
                 {whoOpts.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
               </select>
             )}
+            {hType==="livraisons"&&(
+              <select value={hFil.livraisonDir||"all"} onChange={e=>setHFil(f=>({...f,livraisonDir:e.target.value}))} style={{flex:"0 1 auto",minWidth:200,fontWeight:600}}>
+                <option value="all">Toutes (entrantes + sortantes)</option>
+                <option value="recue">🎯 Livrées aux gangs (sortantes)</option>
+                <option value="passee">📦 Reçues des fournisseurs (entrantes)</option>
+              </select>
+            )}
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{fontSize:12,color:C.muted}}>Du</span>
               <input type="date" value={hFrom} onChange={e=>setHFrom(e.target.value)} style={{fontSize:12,padding:"5px 9px"}}/>
@@ -2983,6 +3107,14 @@ function Main({cu,setCu,onLogout}){
             </div>
             <span style={{fontSize:11,color:C.muted,marginLeft:"auto"}}>
               {hType==="transactions"&&`${filtH.length} transaction${filtH.length!==1?"s":""}`}
+              {hType==="livraisons"&&(()=>{
+                const dir=hFil.livraisonDir||"all";
+                const inRange=(d)=>!hFrom&&!hTo?true:(!hFrom||d>=hFrom)&&(!hTo||d<=hTo);
+                let count=0;
+                if(dir!=="passee") count+=commandesRecues.filter(c=>c.status==="livree"&&c.livree_at&&inRange(c.livree_at.slice(0,10))).length;
+                if(dir!=="recue") count+=commandesPassees.filter(c=>c.status==="livree"&&c.livree_at&&inRange(c.livree_at.slice(0,10))).length;
+                return `${count} commande${count!==1?"s":""}`;
+              })()}
               {hType==="blanchi"&&(()=>{const list=blanchHistory.filter(b=>{if(!hFrom&&!hTo)return true;const d=(b.recup_at||"").slice(0,10);return (!hFrom||d>=hFrom)&&(!hTo||d<=hTo);});return `${list.length} blanchiment${list.length!==1?"s":""}`;})()}
               {hType==="entrepots"&&(()=>{const list=entrepotsHistory.filter(e=>{if(!hFrom&&!hTo)return true;const d=(e.recup_at||"").slice(0,10);return (!hFrom||d>=hFrom)&&(!hTo||d<=hTo);});return `${list.length} entrepôt${list.length!==1?"s":""}`;})()}
             </span>
@@ -3104,6 +3236,111 @@ function Main({cu,setCu,onLogout}){
           </div>
           )}
 
+          {/* Vue Commandes : commandes reçues livrées + commandes passées reçues */}
+          {hType==="livraisons"&&(()=>{
+            const dir = hFil.livraisonDir||"all";
+            const inRange = (iso)=>{
+              if(!iso) return false;
+              if(!hFrom&&!hTo) return true;
+              const d = iso.slice(0,10);
+              return (!hFrom||d>=hFrom)&&(!hTo||d<=hTo);
+            };
+            // Construire une liste unifiée triée par livree_at desc
+            const items = [];
+            if(dir!=="passee"){
+              commandesRecues.filter(c=>c.status==="livree"&&inRange(c.livree_at)).forEach(c=>{
+                items.push({...c, _kind:"recue"});
+              });
+            }
+            if(dir!=="recue"){
+              commandesPassees.filter(c=>c.status==="livree"&&inRange(c.livree_at)).forEach(c=>{
+                items.push({...c, _kind:"passee"});
+              });
+            }
+            items.sort((a,b)=>(b.livree_at||"").localeCompare(a.livree_at||""));
+
+            if(items.length===0) return <div style={{fontSize:13,color:C.muted,textAlign:"center",padding:"3rem",opacity:.5}}>Aucune commande sur la période</div>;
+
+            const totalRecues = items.filter(i=>i._kind==="recue").reduce((s,c)=>s+(+c.montant||0),0);
+            const totalPassees = items.filter(i=>i._kind==="passee").reduce((s,c)=>s+(+c.montant||0),0);
+
+            return (
+              <>
+                <div className="cv-stats-strip" style={{gridTemplateColumns:"repeat(3,1fr)"}}>
+                  <div className="cv-stat-box">
+                    <div className="cv-stat-label">Commandes</div>
+                    <div className="cv-stat-value">{items.length}</div>
+                  </div>
+                  <div className="cv-stat-box">
+                    <div className="cv-stat-label">🎯 Sortantes (sale)</div>
+                    <div className="cv-stat-value" style={{color:C.red}}>{fmt(totalRecues)}</div>
+                  </div>
+                  <div className="cv-stat-box">
+                    <div className="cv-stat-label">📦 Entrantes (payé)</div>
+                    <div className="cv-stat-value" style={{color:C.green}}>{fmt(totalPassees)}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {items.map(it=>{
+                    if(it._kind==="recue"){
+                      // Commande sortante (vers un gang) — argent sale reçu
+                      return (
+                        <div key={"r-"+it.id} style={{...card,borderLeft:"3px solid "+C.red,padding:"12px 16px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                            <div style={{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:0}}>
+                              <span style={{fontSize:18}}>🎯</span>
+                              <div style={{minWidth:0}}>
+                                <div style={{fontSize:14,fontWeight:600,color:C.text}}>
+                                  Commande livrée à <span style={{color:C.red}}>{it.gang_nom||"?"}</span>
+                                  <span style={{fontSize:10,color:C.muted,fontWeight:400,marginLeft:8}}>par {it.user_livraison||"?"}</span>
+                                </div>
+                                <div style={{fontSize:11,color:C.dim,marginTop:2}}>
+                                  {(it.lignes||[]).map(l=>`${l.qte}× ${l.item_nom}`).join(" · ")}
+                                </div>
+                                <div style={{fontSize:10,color:C.dim,marginTop:2}}>
+                                  {it.livree_at?fmtDateTime(new Date(it.livree_at)):""}
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:15,fontWeight:700,color:C.red}}>{fmt(it.montant)}</div>
+                              <div style={{fontSize:9,color:C.red,fontWeight:600,letterSpacing:"0.04em"}}>SALE</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    } else {
+                      // Commande entrante (d'un fournisseur) — argent net dépensé
+                      const typeIcon = {drogue:"💊",arme:"🔫",voiture:"🚗",autre:"📦"}[it.type]||"📦";
+                      return (
+                        <div key={"p-"+it.id} style={{...card,borderLeft:"3px solid "+C.green,padding:"12px 16px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+                            <div style={{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:0}}>
+                              <span style={{fontSize:18}}>{typeIcon}</span>
+                              <div style={{minWidth:0}}>
+                                <div style={{fontSize:14,fontWeight:600,color:C.text,textTransform:"capitalize"}}>
+                                  Commande reçue · {it.type}
+                                  <span style={{fontSize:10,color:C.muted,fontWeight:400,marginLeft:8,textTransform:"none"}}>par {it.user_livraison||"?"}</span>
+                                </div>
+                                {it.note&&<div style={{fontSize:11,color:C.dim,marginTop:2}}>{it.note}</div>}
+                                <div style={{fontSize:10,color:C.dim,marginTop:2}}>
+                                  {it.livree_at?fmtDateTime(new Date(it.livree_at)):""}
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{textAlign:"right"}}>
+                              <div style={{fontSize:15,fontWeight:700,color:C.green}}>{fmt(it.montant)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                  })}
+                </div>
+              </>
+            );
+          })()}
+
           {/* Vue Blanchi : liste des blanchiments archivés */}
           {hType==="blanchi"&&(()=>{
             const list = blanchHistory.filter(b=>{
@@ -3221,36 +3458,47 @@ function Main({cu,setCu,onLogout}){
                       {(cmd.lignes||[]).map(l=>`${l.qte}× ${l.item_nom}`).join(" · ")}
                     </div>
                     <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
-                      <button onClick={()=>{if(window.confirm(`Marquer la commande ${cmd.gang_nom} comme livrée ? Le stock sera décrémenté.`))livrerCommandeRecue(cmd);}} style={{fontSize:11,padding:"5px 12px",fontWeight:700,background:C.green,color:"#1a1a1a",border:"none",borderRadius:4,cursor:"pointer"}}>✓ Livrer</button>
-                      <button onClick={()=>{if(window.confirm("Supprimer cette commande ?"))delCommandeRecue(cmd);}} style={{fontSize:11,padding:"5px 10px",color:C.red}}>×</button>
+                      <button onClick={async()=>{if(await confirm({title:"Livrer la commande",message:`Marquer la commande de ${cmd.gang_nom} comme livrée ?\nLe stock sera décrémenté.`,confirmLabel:"Livrer"}))livrerCommandeRecue(cmd);}} style={{fontSize:11,padding:"5px 12px",fontWeight:700,background:C.green,color:"#1a1a1a",border:"none",borderRadius:4,cursor:"pointer"}}>✓ Livrer</button>
+                      <button onClick={async()=>{if(await confirm({title:"Supprimer la commande",message:"Supprimer cette commande ?",confirmLabel:"Supprimer",danger:true}))delCommandeRecue(cmd);}} style={{fontSize:11,padding:"5px 10px",color:C.red}}>×</button>
                     </div>
                   </div>
                 );
               })}
 
-              <div style={{marginTop:14,fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>
-                Livrées (50 dernières) {commandesRecues.filter(c=>c.status==="livree").length>0&&<span style={{color:C.green}}>· {commandesRecues.filter(c=>c.status==="livree").length}</span>}
-              </div>
-              {commandesRecues.filter(c=>c.status==="livree").length===0 ? (
-                <div style={{fontSize:12,color:C.muted,fontStyle:"italic",padding:12,textAlign:"center"}}>Aucune commande livrée</div>
-              ) : commandesRecues.filter(c=>c.status==="livree").slice(0,50).map(cmd=>(
-                <div key={cmd.id} style={{...card,marginBottom:6,padding:"8px 12px",opacity:0.85}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:600,color:C.text}}>
-                        ✓ {cmd.gang_nom||"?"}
-                        <span style={{fontSize:9,color:C.muted,marginLeft:8}}>par {cmd.user_livraison||"?"}</span>
-                      </div>
-                      <div style={{fontSize:10,color:C.dim,marginTop:2}}>
-                        {(cmd.lignes||[]).map(l=>`${l.qte}×${l.item_nom}`).join(" · ")}
-                      </div>
+              {(() => {
+                const todayStr = today();
+                const livreesToday = commandesRecues.filter(c => c.status==="livree" && c.livree_at && _toLocalDate(new Date(c.livree_at))===todayStr);
+                return (
+                  <>
+                    <div style={{marginTop:14,fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
+                      <span>Livrées aujourd'hui {livreesToday.length>0&&<span style={{color:C.green}}>· {livreesToday.length}</span>}</span>
+                      <button onClick={()=>{setHType("livraisons");setHFil(f=>({...f,livraisonDir:"recue"}));setTab("historique");}} style={{fontSize:9,padding:"2px 8px",color:C.dim,marginLeft:"auto",letterSpacing:"normal",textTransform:"none",fontWeight:500}}>
+                        Voir tout l'historique →
+                      </button>
                     </div>
-                    {+cmd.montant>0&&<span style={{fontSize:13,fontWeight:700,color:C.red,whiteSpace:"nowrap"}}>{fmt(cmd.montant)}</span>}
-                    <span style={{fontSize:10,color:C.dim,whiteSpace:"nowrap"}}>{cmd.livree_at?fmtDateTime(new Date(cmd.livree_at)):""}</span>
-                    {isAdmin&&<button onClick={()=>{if(window.confirm("Supprimer cette commande de l'historique ?"))delCommandeRecue(cmd);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
-                  </div>
-                </div>
-              ))}
+                    {livreesToday.length===0 ? (
+                      <div style={{fontSize:12,color:C.muted,fontStyle:"italic",padding:12,textAlign:"center"}}>Aucune commande livrée aujourd'hui</div>
+                    ) : livreesToday.map(cmd=>(
+                      <div key={cmd.id} style={{...card,marginBottom:6,padding:"8px 12px",opacity:0.85}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:12,fontWeight:600,color:C.text}}>
+                              ✓ {cmd.gang_nom||"?"}
+                              <span style={{fontSize:9,color:C.muted,marginLeft:8}}>par {cmd.user_livraison||"?"}</span>
+                            </div>
+                            <div style={{fontSize:10,color:C.dim,marginTop:2}}>
+                              {(cmd.lignes||[]).map(l=>`${l.qte}×${l.item_nom}`).join(" · ")}
+                            </div>
+                          </div>
+                          {+cmd.montant>0&&<span style={{fontSize:13,fontWeight:700,color:C.red,whiteSpace:"nowrap"}}>{fmt(cmd.montant)}</span>}
+                          <span style={{fontSize:10,color:C.dim,whiteSpace:"nowrap"}}>{cmd.livree_at?fmtTime(new Date(cmd.livree_at)):""}</span>
+                          {isAdmin&&<button onClick={async()=>{if(await confirm({title:"Supprimer de l'historique",message:"Supprimer cette commande de l'historique ?",confirmLabel:"Supprimer",danger:true}))delCommandeRecue(cmd);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
             </div>
 
             {/* ═══════ Commandes passées (fournisseurs) ═══════ */}
@@ -3283,36 +3531,48 @@ function Main({cu,setCu,onLogout}){
                     </div>
                     {cmd.note&&<div style={{fontSize:11,color:C.dim,fontStyle:"italic",marginBottom:8}}>📝 {cmd.note}</div>}
                     <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
-                      <button onClick={()=>{if(window.confirm("Marquer cette commande comme reçue ?"))livrerCommandePassee(cmd);}} style={{fontSize:11,padding:"5px 12px",fontWeight:700,background:C.green,color:"#1a1a1a",border:"none",borderRadius:4,cursor:"pointer"}}>✓ Reçue</button>
-                      <button onClick={()=>{if(window.confirm("Supprimer cette commande ?"))delCommandePassee(cmd);}} style={{fontSize:11,padding:"5px 10px",color:C.red}}>×</button>
+                      <button onClick={async()=>{if(await confirm({title:"Marquer comme reçue",message:"Marquer cette commande comme reçue ?",confirmLabel:"Confirmer"}))livrerCommandePassee(cmd);}} style={{fontSize:11,padding:"5px 12px",fontWeight:700,background:C.green,color:"#1a1a1a",border:"none",borderRadius:4,cursor:"pointer"}}>✓ Reçue</button>
+                      <button onClick={async()=>{if(await confirm({title:"Supprimer la commande",message:"Supprimer cette commande ?",confirmLabel:"Supprimer",danger:true}))delCommandePassee(cmd);}} style={{fontSize:11,padding:"5px 10px",color:C.red}}>×</button>
                     </div>
                   </div>
                 );
               })}
 
-              <div style={{marginTop:14,fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>
-                Reçues (50 dernières) {commandesPassees.filter(c=>c.status==="livree").length>0&&<span style={{color:C.green}}>· {commandesPassees.filter(c=>c.status==="livree").length}</span>}
-              </div>
-              {commandesPassees.filter(c=>c.status==="livree").length===0 ? (
-                <div style={{fontSize:12,color:C.muted,fontStyle:"italic",padding:12,textAlign:"center"}}>Aucune commande reçue</div>
-              ) : commandesPassees.filter(c=>c.status==="livree").slice(0,50).map(cmd=>{
-                const typeIcon = {drogue:"💊",arme:"🔫",voiture:"🚗",autre:"📦"}[cmd.type]||"📦";
+              {(() => {
+                const todayStr = today();
+                const recuesToday = commandesPassees.filter(c => c.status==="livree" && c.livree_at && _toLocalDate(new Date(c.livree_at))===todayStr);
                 return (
-                  <div key={cmd.id} style={{...card,marginBottom:6,padding:"8px 12px",opacity:0.85}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:600,color:C.text,textTransform:"capitalize"}}>
-                          {typeIcon} {cmd.type}
-                          <span style={{fontSize:9,color:C.muted,marginLeft:8}}>par {cmd.user_livraison||"?"}</span>
-                        </div>
-                        {cmd.note&&<div style={{fontSize:10,color:C.dim,marginTop:2}}>{cmd.note}</div>}
-                      </div>
-                      <span style={{fontSize:13,fontWeight:700,color:C.green}}>{fmt(cmd.montant)}</span>
-                      {isAdmin&&<button onClick={()=>{if(window.confirm("Supprimer cette commande de l'historique ?"))delCommandePassee(cmd);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
+                  <>
+                    <div style={{marginTop:14,fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
+                      <span>Reçues aujourd'hui {recuesToday.length>0&&<span style={{color:C.green}}>· {recuesToday.length}</span>}</span>
+                      <button onClick={()=>{setHType("livraisons");setHFil(f=>({...f,livraisonDir:"passee"}));setTab("historique");}} style={{fontSize:9,padding:"2px 8px",color:C.dim,marginLeft:"auto",letterSpacing:"normal",textTransform:"none",fontWeight:500}}>
+                        Voir tout l'historique →
+                      </button>
                     </div>
-                  </div>
+                    {recuesToday.length===0 ? (
+                      <div style={{fontSize:12,color:C.muted,fontStyle:"italic",padding:12,textAlign:"center"}}>Aucune réception aujourd'hui</div>
+                    ) : recuesToday.map(cmd=>{
+                      const typeIcon = {drogue:"💊",arme:"🔫",voiture:"🚗",autre:"📦"}[cmd.type]||"📦";
+                      return (
+                        <div key={cmd.id} style={{...card,marginBottom:6,padding:"8px 12px",opacity:0.85}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:600,color:C.text,textTransform:"capitalize"}}>
+                                {typeIcon} {cmd.type}
+                                <span style={{fontSize:9,color:C.muted,marginLeft:8}}>par {cmd.user_livraison||"?"}</span>
+                              </div>
+                              {cmd.note&&<div style={{fontSize:10,color:C.dim,marginTop:2}}>{cmd.note}</div>}
+                            </div>
+                            <span style={{fontSize:13,fontWeight:700,color:C.green}}>{fmt(cmd.montant)}</span>
+                            <span style={{fontSize:10,color:C.dim,whiteSpace:"nowrap"}}>{cmd.livree_at?fmtTime(new Date(cmd.livree_at)):""}</span>
+                            {isAdmin&&<button onClick={async()=>{if(await confirm({title:"Supprimer de l'historique",message:"Supprimer cette commande de l'historique ?",confirmLabel:"Supprimer",danger:true}))delCommandePassee(cmd);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
                 );
-              })}
+              })()}
             </div>
 
           </div>
@@ -3391,7 +3651,7 @@ function Main({cu,setCu,onLogout}){
                         style={{width:46,fontSize:12,textAlign:"center",padding:"3px 4px",color:C.muted}}
                         title="Seuil d'alerte"
                       />
-                      {isAdmin&&<button onClick={()=>{if(window.confirm(`Retirer ${s.item_nom} du suivi ?`))removeStockItem(s.id);}} style={{fontSize:12,padding:"2px 6px",color:C.red,lineHeight:1}} title="Retirer du suivi">×</button>}
+                      {isAdmin&&<button onClick={async()=>{if(await confirm({title:"Retirer du suivi",message:`Retirer ${s.item_nom} du suivi ?`,confirmLabel:"Retirer",danger:true}))removeStockItem(s.id);}} style={{fontSize:12,padding:"2px 6px",color:C.red,lineHeight:1}} title="Retirer du suivi">×</button>}
                     </div>
                   );
                 })}
@@ -4151,7 +4411,7 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
             {key:"pm",        label:"PM",         icon:"👤"},
             {key:"gang",      label:"Gang",       icon:"🏴"},
             {key:"entrepots", label:"Entrepôts",  icon:"📦"},
-            {key:"livraisons",label:"Livraisons", icon:"🎯"},
+            {key:"livraisons",label:"Commandes", icon:"🎯"},
           ].map(f=>{
             const on=chartFilter[f.key];
             return (
@@ -4323,5 +4583,14 @@ function BigbrotherView({logs,users,bbFilter,setBBFilter}){
         }
       </div>
     </div>
+  );
+}
+
+// Wrapper qui fournit le ConfirmProvider à toute l'app
+export default function App(){
+  return (
+    <ConfirmProvider>
+      <AppInner/>
+    </ConfirmProvider>
   );
 }
