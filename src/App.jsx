@@ -530,7 +530,7 @@ function MemberCard({m,low,setMembers,onLog,dense,idx,total}){
 }
 
 // ── Carte d'un appart avec save sur blur / Entrée (anti-lag Realtime) ──
-function AppartCard({a,updateAppart,copied,setCopied}){
+function AppartCard({a,updateAppart,copied,setCopied,isLondres,stockLondres,itemsPM,itemsG,isAdmin,onAddStockItem,onRemoveStockItem,onUpdateStockQty,onUpdateStockSeuil}){
   const ac=getCat(a.categorie);
   const [coffre,setCoffre]=useState(String(a.coffre));
   const [stock,setStock]=useState(String(a.stock));
@@ -623,6 +623,108 @@ function AppartCard({a,updateAppart,copied,setCopied}){
           <Bar val={a.stock} max={a.max_stock}/>
         </div>
       </div>
+
+      {/* Section Stock Londres */}
+      {isLondres && stockLondres && (
+        <LondresStockSection
+          stockLondres={stockLondres}
+          itemsPM={itemsPM}
+          itemsG={itemsG}
+          isAdmin={isAdmin}
+          onAddStockItem={onAddStockItem}
+          onRemoveStockItem={onRemoveStockItem}
+          onUpdateStockQty={onUpdateStockQty}
+          onUpdateStockSeuil={onUpdateStockSeuil}
+        />
+      )}
+    </div>
+  );
+}
+
+// Section Stock Londres : liste des items suivis avec quantité + seuil + ajout
+function LondresStockSection({stockLondres,itemsPM,itemsG,isAdmin,onAddStockItem,onRemoveStockItem,onUpdateStockQty,onUpdateStockSeuil}){
+  const [showAdd, setShowAdd] = useState(false);
+  const [addType, setAddType] = useState("pm");
+  const [addItemId, setAddItemId] = useState("");
+  const [addSeuil, setAddSeuil] = useState("5");
+
+  // Items disponibles à ajouter (pas déjà dans le stock)
+  const availableItems = useMemo(()=>{
+    const usedKeys = new Set(stockLondres.map(s => s.item_type+":"+s.item_id));
+    const list = addType==="pm" ? itemsPM : itemsG;
+    return list.filter(i => !usedKeys.has(addType+":"+i.id) && i.visible !== false);
+  },[stockLondres, itemsPM, itemsG, addType]);
+
+  function handleAdd(){
+    const item = availableItems.find(i => i.id === addItemId);
+    if(!item) return;
+    onAddStockItem(item, addType, +addSeuil||5);
+    setAddItemId("");
+    setAddSeuil("5");
+  }
+
+  return (
+    <div style={{borderTop:"1px solid "+C.border,paddingTop:12,marginTop:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+        <span style={{fontSize:10,fontWeight:700,color:C.amber,textTransform:"uppercase",letterSpacing:"0.08em"}}>
+          📦 Stock commandes
+        </span>
+        <button onClick={()=>setShowAdd(s=>!s)} style={{fontSize:10,padding:"3px 8px",color:C.amber,border:"1px solid "+C.border}}>
+          {showAdd?"− Annuler":"+ Item"}
+        </button>
+      </div>
+
+      {showAdd && (
+        <div style={{background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,padding:8,marginBottom:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"60px 1fr 60px auto",gap:6,alignItems:"center"}}>
+            <select value={addType} onChange={e=>{setAddType(e.target.value);setAddItemId("");}} style={{fontSize:11}}>
+              <option value="pm">PM</option>
+              <option value="gang">Gang</option>
+            </select>
+            <select value={addItemId} onChange={e=>setAddItemId(e.target.value)} style={{fontSize:11,minWidth:0}}>
+              <option value="">— item —</option>
+              {availableItems.map(i => <option key={i.id} value={i.id}>{i.nom}</option>)}
+            </select>
+            <input type="number" min="0" placeholder="Seuil" value={addSeuil} onChange={e=>setAddSeuil(e.target.value)} style={{fontSize:11,width:60,textAlign:"center"}} title="Seuil d'alerte"/>
+            <button onClick={handleAdd} disabled={!addItemId} style={{fontSize:11,padding:"4px 8px",fontWeight:700,color:addItemId?C.green:C.dim,opacity:addItemId?1:0.5}}>OK</button>
+          </div>
+        </div>
+      )}
+
+      {stockLondres.length===0 ? (
+        <div style={{fontSize:11,color:C.muted,fontStyle:"italic",padding:"6px 0",textAlign:"center"}}>
+          Aucun item suivi. Clique sur "+ Item" pour configurer.
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {stockLondres.map(s=>{
+            const isLow = s.quantite < s.seuil;
+            return (
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",background:isLow?"rgba(223,90,68,0.08)":"transparent",borderRadius:4,fontSize:12}}>
+                <span style={{flex:1,minWidth:0,color:isLow?C.red:C.text,fontWeight:isLow?600:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.item_nom}</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={s.quantite}
+                  onChange={e=>onUpdateStockQty(s.id, e.target.value)}
+                  style={{width:56,textAlign:"center",fontSize:12,padding:"3px 4px",fontWeight:700,color:isLow?C.red:C.text}}
+                  title="Quantité actuelle"
+                />
+                <span style={{fontSize:9,color:C.dim}}>/ </span>
+                <input
+                  type="number"
+                  min="0"
+                  value={s.seuil}
+                  onChange={e=>onUpdateStockSeuil(s.id, e.target.value)}
+                  style={{width:42,textAlign:"center",fontSize:11,padding:"3px 4px",color:C.muted}}
+                  title="Seuil d'alerte"
+                />
+                {isAdmin&&<button onClick={()=>{if(window.confirm(`Retirer ${s.item_nom} du suivi ?`))onRemoveStockItem(s.id);}} style={{fontSize:10,padding:"2px 5px",color:C.red}}>×</button>}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -908,6 +1010,152 @@ function EditItemForm({item,onSave,onCancel,isPM}){
   );
 }
 
+// Formulaire d'ajout d'une commande reçue (gang + multi-items + note)
+const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, stockLondres, onAdd}){
+  const [gangId, setGangId] = useState("");
+  const [note, setNote] = useState("");
+  const [qtes, setQtes] = useState({}); // {stockId: qte}
+  const onAddRef = useRef(onAdd);
+  useEffect(()=>{onAddRef.current = onAdd;});
+
+  // Items disponibles = ceux dans le stock Londres (avec leurs infos)
+  const stockItems = stockLondres.map(s => {
+    const item = s.item_type === "pm"
+      ? itemsPM.find(i => i.id === s.item_id)
+      : itemsG.find(i => i.id === s.item_id);
+    return {...s, item};
+  }).filter(s => s.item);
+
+  const totalQte = Object.values(qtes).reduce((a,b)=>a+(+b||0), 0);
+  const canSubmit = !!(gangId && totalQte > 0);
+
+  async function submit(){
+    if(!canSubmit) return;
+    const gang = gangs.find(g => g.id === gangId);
+    const lignes = stockItems
+      .filter(s => (+qtes[s.id]||0) > 0)
+      .map(s => ({
+        item_id: s.item_id,
+        item_type: s.item_type,
+        item_nom: s.item_nom,
+        qte: +qtes[s.id]||0
+      }));
+    await onAddRef.current({
+      gang_id: gangId,
+      gang_nom: gang?.nom || "?",
+      lignes: lignes,
+      note: note || null
+    });
+    setGangId(""); setNote(""); setQtes({});
+  }
+
+  return (
+    <div style={{background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:8,padding:14}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Nouvelle commande reçue</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+        <div>
+          <div style={S.lbl}>Client (gang) <span style={{color:C.red}}>*</span></div>
+          <select value={gangId} onChange={e=>setGangId(e.target.value)} style={{width:"100%"}}>
+            <option value="">— choisir —</option>
+            {gangs.map(g => <option key={g.id} value={g.id}>{g.nom}</option>)}
+          </select>
+        </div>
+        <div>
+          <div style={S.lbl}>Note <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div>
+          <input type="text" placeholder="Note libre..." value={note} onChange={e=>setNote(e.target.value)} style={{width:"100%"}}/>
+        </div>
+      </div>
+      {stockItems.length===0 ? (
+        <div style={{fontSize:11,color:C.muted,fontStyle:"italic",padding:"10px 0",textAlign:"center"}}>
+          Aucun item dans le stock Londres. Configure les items à suivre dans Apparts → Londres.
+        </div>
+      ) : (
+        <>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Items à livrer</div>
+          <div style={{maxHeight:240,overflowY:"auto",borderTop:"1px solid "+C.border,borderBottom:"1px solid "+C.border,marginBottom:10}}>
+            {stockItems.map(s => (
+              <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
+                <span style={{flex:1,fontSize:13,color:C.text}}>
+                  {s.item_nom}
+                  <span style={{fontSize:10,color:C.muted,marginLeft:6}}>({s.item_type==="pm"?"PM":"Gang"} · stock : {s.quantite})</span>
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={qtes[s.id]||""}
+                  onChange={e=>setQtes(q => ({...q, [s.id]: e.target.value}))}
+                  style={{width:72,textAlign:"center"}}
+                />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10}}>
+        {totalQte>0 && <span style={{fontSize:11,color:C.muted}}>Total : <strong style={{color:C.text}}>{totalQte}</strong> item{totalQte>1?"s":""}</span>}
+        <button onClick={submit} disabled={!canSubmit} style={{padding:"8px 18px",fontWeight:700,background:canSubmit?C.green:"#3a3a3a",color:canSubmit?"#1a1a1a":C.muted,border:"none",borderRadius:6,cursor:canSubmit?"pointer":"not-allowed",opacity:canSubmit?1:0.6}}>
+          + Créer commande
+        </button>
+      </div>
+    </div>
+  );
+}, (prev, next) => {
+  if(prev.gangs !== next.gangs) return false;
+  if(prev.itemsPM !== next.itemsPM) return false;
+  if(prev.itemsG !== next.itemsG) return false;
+  if(prev.stockLondres !== next.stockLondres) return false;
+  return true;
+});
+
+// Formulaire d'ajout d'une commande passée (type + montant + note)
+const AddCmdPasseeForm = memo(function AddCmdPasseeForm({onAdd}){
+  const [type, setType] = useState("");
+  const [montant, setMontant] = useState("");
+  const [note, setNote] = useState("");
+  const onAddRef = useRef(onAdd);
+  useEffect(()=>{onAddRef.current = onAdd;});
+
+  const canSubmit = !!(type && +montant > 0);
+
+  async function submit(){
+    if(!canSubmit) return;
+    await onAddRef.current({type, montant:+montant, note:note||null});
+    setType(""); setMontant(""); setNote("");
+  }
+
+  return (
+    <div style={{background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:8,padding:14}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Nouvelle commande passée</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+        <div>
+          <div style={S.lbl}>Type <span style={{color:C.red}}>*</span></div>
+          <select value={type} onChange={e=>setType(e.target.value)} style={{width:"100%"}}>
+            <option value="">— choisir —</option>
+            <option value="drogue">💊 Drogue</option>
+            <option value="arme">🔫 Arme</option>
+            <option value="voiture">🚗 Voiture</option>
+            <option value="autre">📦 Autre</option>
+          </select>
+        </div>
+        <div>
+          <div style={S.lbl}>Montant ($) <span style={{color:C.red}}>*</span></div>
+          <input type="number" min="1" placeholder="ex: 50000" value={montant} onChange={e=>setMontant(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} style={{width:"100%"}}/>
+        </div>
+      </div>
+      <div style={{marginBottom:10}}>
+        <div style={S.lbl}>Note <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div>
+        <input type="text" placeholder="Détails, fournisseur, contact..." value={note} onChange={e=>setNote(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} style={{width:"100%"}}/>
+      </div>
+      <div style={{display:"flex",justifyContent:"flex-end"}}>
+        <button onClick={submit} disabled={!canSubmit} style={{padding:"8px 18px",fontWeight:700,background:canSubmit?C.green:"#3a3a3a",color:canSubmit?"#1a1a1a":C.muted,border:"none",borderRadius:6,cursor:canSubmit?"pointer":"not-allowed",opacity:canSubmit?1:0.6}}>
+          + Créer commande
+        </button>
+      </div>
+    </div>
+  );
+}, () => true);
+
 function Main({cu,setCu,onLogout}){
   const isAdmin=cu.role==="admin";
   const [tab,setTab]=useState("dashboard");
@@ -927,6 +1175,9 @@ function Main({cu,setCu,onLogout}){
   const [blanchHistory,setBlanchHistory]=useState([]);
   const [entrepots,setEntrepots]=useState([]);
   const [entrepotsHistory,setEntrepotsHistory]=useState([]);
+  const [stockLondres,setStockLondres]=useState([]);
+  const [commandesRecues,setCommandesRecues]=useState([]);
+  const [commandesPassees,setCommandesPassees]=useState([]);
   const [alertThreshold,setAlertThreshold]=useState(10000);
   const [auditLogs,setAuditLogs]=useState([]);
   const [pmGroupes,setPMGroupes]=useState([]);
@@ -936,7 +1187,7 @@ function Main({cu,setCu,onLogout}){
     const cutoff=new Date(Date.now()-30*24*3600*1000).toISOString();
     sb.from("audit_log").delete().lt("created_at",cutoff).then(()=>{});
 
-    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st,al,bh,pg,en,enh]=await Promise.all([
+    const [a,cpm,cg,p,g,ipm,ig,bm,h,u,bl,st,al,bh,pg,en,enh,sl,cr,cp]=await Promise.all([
       sb.from("apparts").select("*").order("nom"),
       sb.from("categories_pm").select("*").order("pct_objets"),
       sb.from("categories_gang").select("*").order("pct_objets"),
@@ -954,6 +1205,9 @@ function Main({cu,setCu,onLogout}){
       sb.from("pm_groupes").select("*").order("nom"),
       sb.from("entrepots").select("*").eq("status","active").order("depot_at",{ascending:true}),
       sb.from("entrepots_history").select("*").order("recup_at",{ascending:false}).limit(500),
+      sb.from("stock_londres").select("*").order("item_nom"),
+      sb.from("commandes_recues").select("*").order("created_at",{ascending:false}).limit(200),
+      sb.from("commandes_passees").select("*").order("created_at",{ascending:false}).limit(200),
     ]);
     setApparts(a.data||[]);
     setCatsPM(cpm.data||[]);
@@ -972,6 +1226,9 @@ function Main({cu,setCu,onLogout}){
     setPMGroupes(pg.data||[]);
     setEntrepots(en.data||[]);
     setEntrepotsHistory(enh.data||[]);
+    setStockLondres(sl.data||[]);
+    setCommandesRecues(cr.data||[]);
+    setCommandesPassees(cp.data||[]);
     // Sécurité session : si l'utilisateur courant n'existe plus en BDD ou a changé de code, on le déconnecte
     if(cu && u.data){
       const userInBdd = u.data.find(x=>x.id===cu.id);
@@ -1011,6 +1268,9 @@ function Main({cu,setCu,onLogout}){
       pm_groupes:        ()=>sb.from("pm_groupes").select("*").order("nom").then(({data})=>setPMGroupes(data||[])),
       entrepots:         ()=>sb.from("entrepots").select("*").eq("status","active").order("depot_at",{ascending:true}).then(({data})=>setEntrepots(data||[])),
       entrepots_history: ()=>sb.from("entrepots_history").select("*").order("recup_at",{ascending:false}).limit(500).then(({data})=>setEntrepotsHistory(data||[])),
+      stock_londres:     ()=>sb.from("stock_londres").select("*").order("item_nom").then(({data})=>setStockLondres(data||[])),
+      commandes_recues:  ()=>sb.from("commandes_recues").select("*").order("created_at",{ascending:false}).limit(200).then(({data})=>setCommandesRecues(data||[])),
+      commandes_passees: ()=>sb.from("commandes_passees").select("*").order("created_at",{ascending:false}).limit(200).then(({data})=>setCommandesPassees(data||[])),
       app_settings:      async ()=>{
                             const {data}=await sb.from("app_settings").select("*").eq("key","alert_threshold").maybeSingle();
                             if(data&&data.value)setAlertThreshold(+data.value||10000);
@@ -1047,6 +1307,9 @@ function Main({cu,setCu,onLogout}){
       .on("postgres_changes", {event:"*", schema:"public", table:"pm_groupes"},         p=>triggerReload("pm_groupes"))
       .on("postgres_changes", {event:"*", schema:"public", table:"entrepots"},          p=>triggerReload("entrepots"))
       .on("postgres_changes", {event:"*", schema:"public", table:"entrepots_history"},  p=>triggerReload("entrepots_history"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"stock_londres"},      p=>triggerReload("stock_londres"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"commandes_recues"},   p=>triggerReload("commandes_recues"))
+      .on("postgres_changes", {event:"*", schema:"public", table:"commandes_passees"},  p=>triggerReload("commandes_passees"))
       .subscribe();
 
     return () => {
@@ -1168,6 +1431,116 @@ function Main({cu,setCu,onLogout}){
     await sb.from("entrepots").delete().eq("id", ent.id);
     setEntrepots(prev => prev.filter(x => x.id !== ent.id));
     log("entrepot","delete",`a supprimé un entrepôt de <b>${fmt(ent.montant)}</b>`);
+  }
+
+  // ── Gestion du Stock Londres ──
+  async function addStockItem(item, type, seuil=5){
+    // item = {id, nom} ; type = 'pm' ou 'gang'
+    const exists = stockLondres.find(s => s.item_id===item.id && s.item_type===type);
+    if(exists){ alert("Cet item est déjà suivi."); return; }
+    const {data} = await sb.from("stock_londres").insert({
+      item_id: item.id,
+      item_type: type,
+      item_nom: item.nom,
+      quantite: 0,
+      seuil: seuil
+    }).select().single();
+    if(data){
+      setStockLondres(prev => [...prev, data]);
+      log("stock","stock_add",`a ajouté <b>${item.nom}</b> au suivi stock Londres`);
+    }
+  }
+  async function removeStockItem(stockId){
+    const item = stockLondres.find(s=>s.id===stockId);
+    await sb.from("stock_londres").delete().eq("id", stockId);
+    setStockLondres(prev => prev.filter(s => s.id !== stockId));
+    if(item) log("stock","stock_remove",`a retiré <b>${item.item_nom}</b> du suivi stock Londres`);
+  }
+  async function updateStockQty(stockId, newQty){
+    const before = stockLondres.find(s=>s.id===stockId);
+    const qty = Math.max(0, +newQty||0);
+    await sb.from("stock_londres").update({quantite:qty, updated_at:new Date().toISOString()}).eq("id", stockId);
+    setStockLondres(prev => prev.map(s => s.id===stockId ? {...s, quantite:qty} : s));
+    if(before && before.quantite !== qty) log("stock","stock_qty",`a ajusté le stock de <b>${before.item_nom}</b> : ${before.quantite} → ${qty}`);
+  }
+  async function updateStockSeuil(stockId, newSeuil){
+    const seuil = Math.max(0, +newSeuil||0);
+    await sb.from("stock_londres").update({seuil:seuil}).eq("id", stockId);
+    setStockLondres(prev => prev.map(s => s.id===stockId ? {...s, seuil:seuil} : s));
+  }
+
+  // ── Gestion Commandes Reçues ──
+  async function createCommandeRecue({gang_id, gang_nom, lignes, note}){
+    const {data} = await sb.from("commandes_recues").insert({
+      gang_id: gang_id||null,
+      gang_nom: gang_nom||null,
+      lignes: lignes||[],
+      status: "en_attente",
+      note: note||null,
+      user_creation: cu.nom
+    }).select().single();
+    if(data){
+      setCommandesRecues(prev => [data, ...prev]);
+      const totalQte = (lignes||[]).reduce((s,l)=>s+(+l.qte||0),0);
+      log("commande","cmd_recue_create",`a créé une commande reçue pour <b>${gang_nom||"?"}</b> · ${totalQte} item${totalQte>1?"s":""}`);
+    }
+  }
+  async function livrerCommandeRecue(cmd){
+    if(!cmd) return;
+    // Décrémenter le stock pour chaque ligne
+    for(const ligne of (cmd.lignes||[])){
+      const stock = stockLondres.find(s => s.item_id===ligne.item_id && s.item_type===ligne.item_type);
+      if(stock){
+        const newQty = Math.max(0, stock.quantite - (+ligne.qte||0));
+        await sb.from("stock_londres").update({quantite:newQty, updated_at:new Date().toISOString()}).eq("id", stock.id);
+        setStockLondres(prev => prev.map(s => s.id===stock.id ? {...s, quantite:newQty} : s));
+      }
+    }
+    // Marquer la commande comme livrée
+    await sb.from("commandes_recues").update({
+      status: "livree",
+      livree_at: new Date().toISOString(),
+      user_livraison: cu.nom
+    }).eq("id", cmd.id);
+    setCommandesRecues(prev => prev.map(c => c.id===cmd.id ? {...c, status:"livree", livree_at:new Date().toISOString(), user_livraison:cu.nom} : c));
+    log("commande","cmd_recue_livree",`a livré la commande pour <b>${cmd.gang_nom||"?"}</b>`);
+  }
+  async function delCommandeRecue(cmd){
+    if(!cmd) return;
+    await sb.from("commandes_recues").delete().eq("id", cmd.id);
+    setCommandesRecues(prev => prev.filter(c => c.id !== cmd.id));
+    log("commande","cmd_recue_delete",`a supprimé une commande reçue de <b>${cmd.gang_nom||"?"}</b>`);
+  }
+
+  // ── Gestion Commandes Passées ──
+  async function createCommandePassee({type, montant, note}){
+    const {data} = await sb.from("commandes_passees").insert({
+      type: type,
+      montant: +montant||0,
+      note: note||null,
+      status: "en_attente",
+      user_creation: cu.nom
+    }).select().single();
+    if(data){
+      setCommandesPassees(prev => [data, ...prev]);
+      log("commande","cmd_passee_create",`a créé une commande passée · ${type} · <b>${fmt(montant)}</b>`);
+    }
+  }
+  async function livrerCommandePassee(cmd){
+    if(!cmd) return;
+    await sb.from("commandes_passees").update({
+      status: "livree",
+      livree_at: new Date().toISOString(),
+      user_livraison: cu.nom
+    }).eq("id", cmd.id);
+    setCommandesPassees(prev => prev.map(c => c.id===cmd.id ? {...c, status:"livree", livree_at:new Date().toISOString(), user_livraison:cu.nom} : c));
+    log("commande","cmd_passee_livree",`a marqué une commande passée comme reçue · ${cmd.type} · <b>${fmt(cmd.montant)}</b>`);
+  }
+  async function delCommandePassee(cmd){
+    if(!cmd) return;
+    await sb.from("commandes_passees").delete().eq("id", cmd.id);
+    setCommandesPassees(prev => prev.filter(c => c.id !== cmd.id));
+    log("commande","cmd_passee_delete",`a supprimé une commande passée · ${cmd.type} · ${fmt(cmd.montant)}`);
   }
 
   const E0={dest:"pm",pmId:"",gangId:"",membreId:"",qtes:{},liasseQte:"",argentSale:"",date:today(),note:""};
@@ -1406,6 +1779,11 @@ function Main({cu,setCu,onLogout}){
   },[history,hFil,hFrom,hTo,pms,pmGroupes]);
 
   // Totaux sur les transactions filtrées (Historique)
+  // Items en stock bas (sous le seuil) — utilisé pour l'alerte du tableau de bord
+  const stockBas = useMemo(()=>{
+    return stockLondres.filter(s => s.quantite < s.seuil);
+  },[stockLondres]);
+
   const totauxH=useMemo(()=>{
     let liasseQte=0, liasseFace=0, objQte=0, objRevente=0, payePM=0, payeGang=0, sale=0;
     filtH.forEach(h=>{
@@ -1675,7 +2053,7 @@ function Main({cu,setCu,onLogout}){
     log("items",newVal?"unhide":"hide",`a ${newVal?"affiché":"masqué"} l'item <b>${item.nom}</b> ${newVal?"👁":"🚫"}`);
   }
 
-  const TABS_BASE=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"stats",label:"Stats"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
+  const TABS_BASE=[{id:"dashboard",label:"Tableau de bord"},{id:"transactions",label:"Transactions"},{id:"commandes",label:"Commandes"},{id:"historique",label:"Historique"},{id:"apparts",label:"Apparts"},{id:"stats",label:"Stats"},{id:"database",label:"Database"},{id:"parametres",label:"Paramètres"}];
   const TABS=isAdmin?[...TABS_BASE,{id:"bigbrother",label:"👁 Bigbrother",admin:true}]:TABS_BASE;
   const ns=id=>{
     const isBB=id==="bigbrother";
@@ -2451,6 +2829,30 @@ function Main({cu,setCu,onLogout}){
           </div>
           {/* Fin grid 2-cols Blanchisserie + Entrepôts */}
 
+          {/* À RÉAPPROVISIONNER — n'apparaît que si au moins 1 item est sous son seuil */}
+          {stockBas.length>0 && (
+            <div style={{...card,marginTop:16,borderLeft:"3px solid "+C.red,padding:"14px 18px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                <span style={{fontSize:10,fontWeight:700,color:C.red,textTransform:"uppercase",letterSpacing:"0.12em"}}>⚠ À réapprovisionner</span>
+                <span style={{fontSize:11,padding:"2px 9px",borderRadius:5,fontWeight:600,background:"rgba(223,90,68,0.15)",color:C.red,border:"1px solid rgba(223,90,68,0.3)"}}>
+                  {stockBas.length} item{stockBas.length>1?"s":""}
+                </span>
+                <span style={{fontSize:11,color:C.dim,marginLeft:"auto"}}>Stock Londres</span>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
+                {stockBas.map(s=>(
+                  <div key={s.id} style={{background:"rgba(223,90,68,0.06)",border:"1px solid rgba(223,90,68,0.25)",borderRadius:6,padding:"8px 10px"}}>
+                    <div style={{fontSize:13,fontWeight:600,color:C.text,marginBottom:3}}>{s.item_nom}</div>
+                    <div style={{fontSize:11,color:C.muted,display:"flex",justifyContent:"space-between"}}>
+                      <span>Stock : <strong style={{color:C.red}}>{s.quantite}</strong></span>
+                      <span>Seuil : {s.seuil}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* COMPTES MEMBRES — style "tableau dense" : cellules collées avec bordures fines */}
           <div style={{display:"flex",alignItems:"center",gap:8,margin:"24px 0 10px"}}>
             <span style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em"}}>Comptes membres</span>
@@ -2765,6 +3167,137 @@ function Main({cu,setCu,onLogout}){
         </div>
       )}
 
+      {tab==="commandes"&&(
+        <div>
+          <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+
+            {/* ═══════ Commandes reçues (clients) ═══════ */}
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:C.green,textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+                <span>📤 Commandes reçues</span>
+                <span style={{fontSize:10,color:C.dim,fontWeight:500,letterSpacing:"normal"}}>(à livrer)</span>
+              </div>
+
+              <AddCmdRecueForm gangs={gangs} itemsPM={itemsPM} itemsG={itemsG} stockLondres={stockLondres} onAdd={createCommandeRecue}/>
+
+              <div style={{marginTop:14,fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>
+                En attente {commandesRecues.filter(c=>c.status==="en_attente").length>0&&<span style={{color:C.amber}}>· {commandesRecues.filter(c=>c.status==="en_attente").length}</span>}
+              </div>
+              {commandesRecues.filter(c=>c.status==="en_attente").length===0 ? (
+                <div style={{fontSize:12,color:C.muted,fontStyle:"italic",padding:12,textAlign:"center"}}>Aucune commande en attente</div>
+              ) : commandesRecues.filter(c=>c.status==="en_attente").map(cmd=>{
+                const totalQte = (cmd.lignes||[]).reduce((s,l)=>s+(+l.qte||0),0);
+                return (
+                  <div key={cmd.id} style={{...card,marginBottom:8,borderLeft:"3px solid "+C.amber,padding:"10px 14px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <div style={{fontSize:13,fontWeight:600,color:C.text}}>
+                        🎯 {cmd.gang_nom||"?"}
+                        <span style={{fontSize:10,padding:"1px 7px",borderRadius:4,fontWeight:600,background:"rgba(212,146,10,0.15)",color:C.amber,marginLeft:8}}>En attente</span>
+                      </div>
+                      <span style={{fontSize:10,color:C.dim}}>{fmtDateTime(new Date(cmd.created_at))}</span>
+                    </div>
+                    <div style={{fontSize:11,color:C.muted,marginBottom:8}}>
+                      {(cmd.lignes||[]).map(l=>`${l.qte}× ${l.item_nom}`).join(" · ")}
+                    </div>
+                    {cmd.note&&<div style={{fontSize:11,color:C.dim,fontStyle:"italic",marginBottom:8}}>📝 {cmd.note}</div>}
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                      <button onClick={()=>{if(window.confirm(`Marquer la commande ${cmd.gang_nom} comme livrée ? Le stock sera décrémenté.`))livrerCommandeRecue(cmd);}} style={{fontSize:11,padding:"5px 12px",fontWeight:700,background:C.green,color:"#1a1a1a",border:"none",borderRadius:4,cursor:"pointer"}}>✓ Livrer</button>
+                      <button onClick={()=>{if(window.confirm("Supprimer cette commande ?"))delCommandeRecue(cmd);}} style={{fontSize:11,padding:"5px 10px",color:C.red}}>×</button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div style={{marginTop:14,fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>
+                Livrées (50 dernières) {commandesRecues.filter(c=>c.status==="livree").length>0&&<span style={{color:C.green}}>· {commandesRecues.filter(c=>c.status==="livree").length}</span>}
+              </div>
+              {commandesRecues.filter(c=>c.status==="livree").length===0 ? (
+                <div style={{fontSize:12,color:C.muted,fontStyle:"italic",padding:12,textAlign:"center"}}>Aucune commande livrée</div>
+              ) : commandesRecues.filter(c=>c.status==="livree").slice(0,50).map(cmd=>(
+                <div key={cmd.id} style={{...card,marginBottom:6,padding:"8px 12px",opacity:0.85}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:600,color:C.text}}>
+                        ✓ {cmd.gang_nom||"?"}
+                        <span style={{fontSize:9,color:C.muted,marginLeft:8}}>par {cmd.user_livraison||"?"}</span>
+                      </div>
+                      <div style={{fontSize:10,color:C.dim,marginTop:2}}>
+                        {(cmd.lignes||[]).map(l=>`${l.qte}×${l.item_nom}`).join(" · ")}
+                      </div>
+                    </div>
+                    <span style={{fontSize:10,color:C.dim,whiteSpace:"nowrap"}}>{cmd.livree_at?fmtDateTime(new Date(cmd.livree_at)):""}</span>
+                    {isAdmin&&<button onClick={()=>{if(window.confirm("Supprimer cette commande de l'historique ?"))delCommandeRecue(cmd);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* ═══════ Commandes passées (fournisseurs) ═══════ */}
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:C.amber,textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:10,display:"flex",alignItems:"center",gap:10}}>
+                <span>📥 Commandes passées</span>
+                <span style={{fontSize:10,color:C.dim,fontWeight:500,letterSpacing:"normal"}}>(que l'on attend)</span>
+              </div>
+
+              <AddCmdPasseeForm onAdd={createCommandePassee}/>
+
+              <div style={{marginTop:14,fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>
+                En attente {commandesPassees.filter(c=>c.status==="en_attente").length>0&&<span style={{color:C.amber}}>· {commandesPassees.filter(c=>c.status==="en_attente").length}</span>}
+              </div>
+              {commandesPassees.filter(c=>c.status==="en_attente").length===0 ? (
+                <div style={{fontSize:12,color:C.muted,fontStyle:"italic",padding:12,textAlign:"center"}}>Aucune commande en attente</div>
+              ) : commandesPassees.filter(c=>c.status==="en_attente").map(cmd=>{
+                const typeIcon = {drogue:"💊",arme:"🔫",voiture:"🚗",autre:"📦"}[cmd.type]||"📦";
+                return (
+                  <div key={cmd.id} style={{...card,marginBottom:8,borderLeft:"3px solid "+C.amber,padding:"10px 14px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <div style={{fontSize:13,fontWeight:600,color:C.text,textTransform:"capitalize"}}>
+                        {typeIcon} {cmd.type}
+                        <span style={{fontSize:10,padding:"1px 7px",borderRadius:4,fontWeight:600,background:"rgba(212,146,10,0.15)",color:C.amber,marginLeft:8}}>En attente</span>
+                      </div>
+                      <span style={{fontSize:14,fontWeight:700,color:C.amber}}>{fmt(cmd.montant)}</span>
+                    </div>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:8}}>
+                      Par {cmd.user_creation||"?"} · {fmtDateTime(new Date(cmd.created_at))}
+                    </div>
+                    {cmd.note&&<div style={{fontSize:11,color:C.dim,fontStyle:"italic",marginBottom:8}}>📝 {cmd.note}</div>}
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
+                      <button onClick={()=>{if(window.confirm("Marquer cette commande comme reçue ?"))livrerCommandePassee(cmd);}} style={{fontSize:11,padding:"5px 12px",fontWeight:700,background:C.green,color:"#1a1a1a",border:"none",borderRadius:4,cursor:"pointer"}}>✓ Reçue</button>
+                      <button onClick={()=>{if(window.confirm("Supprimer cette commande ?"))delCommandePassee(cmd);}} style={{fontSize:11,padding:"5px 10px",color:C.red}}>×</button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div style={{marginTop:14,fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>
+                Reçues (50 dernières) {commandesPassees.filter(c=>c.status==="livree").length>0&&<span style={{color:C.green}}>· {commandesPassees.filter(c=>c.status==="livree").length}</span>}
+              </div>
+              {commandesPassees.filter(c=>c.status==="livree").length===0 ? (
+                <div style={{fontSize:12,color:C.muted,fontStyle:"italic",padding:12,textAlign:"center"}}>Aucune commande reçue</div>
+              ) : commandesPassees.filter(c=>c.status==="livree").slice(0,50).map(cmd=>{
+                const typeIcon = {drogue:"💊",arme:"🔫",voiture:"🚗",autre:"📦"}[cmd.type]||"📦";
+                return (
+                  <div key={cmd.id} style={{...card,marginBottom:6,padding:"8px 12px",opacity:0.85}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:600,color:C.text,textTransform:"capitalize"}}>
+                          {typeIcon} {cmd.type}
+                          <span style={{fontSize:9,color:C.muted,marginLeft:8}}>par {cmd.user_livraison||"?"}</span>
+                        </div>
+                        {cmd.note&&<div style={{fontSize:10,color:C.dim,marginTop:2}}>{cmd.note}</div>}
+                      </div>
+                      <span style={{fontSize:13,fontWeight:700,color:C.green}}>{fmt(cmd.montant)}</span>
+                      {isAdmin&&<button onClick={()=>{if(window.confirm("Supprimer cette commande de l'historique ?"))delCommandePassee(cmd);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {tab==="apparts"&&(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
@@ -2779,9 +3312,27 @@ function Main({cu,setCu,onLogout}){
           </div>
           {!isAdmin&&<div style={{fontSize:11,color:C.muted,marginBottom:10,fontStyle:"italic"}}>💡 Tu peux modifier le coffre et le stock. Pour le reste (nom, catégorie, code, ajout), va dans Database (admin).</div>}
           <div data-mobile="apparts-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            {sortedAp.map(a=>(
-              <AppartCard key={a.id} a={a} updateAppart={updateAppart} copied={copied} setCopied={setCopied}/>
-            ))}
+            {sortedAp.map(a=>{
+              const isLondres = a.nom && a.nom.toLowerCase().trim()==="londres";
+              return (
+                <AppartCard
+                  key={a.id}
+                  a={a}
+                  updateAppart={updateAppart}
+                  copied={copied}
+                  setCopied={setCopied}
+                  isLondres={isLondres}
+                  stockLondres={isLondres?stockLondres:null}
+                  itemsPM={isLondres?itemsPM:null}
+                  itemsG={isLondres?itemsG:null}
+                  isAdmin={isAdmin}
+                  onAddStockItem={isLondres?addStockItem:null}
+                  onRemoveStockItem={isLondres?removeStockItem:null}
+                  onUpdateStockQty={isLondres?updateStockQty:null}
+                  onUpdateStockSeuil={isLondres?updateStockSeuil:null}
+                />
+              );
+            })}
           </div>
         </div>
       )}
