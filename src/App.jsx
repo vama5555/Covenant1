@@ -3862,6 +3862,14 @@ function Main({cu,setCu,onLogout}){
 
 // ── Composant onglet Stats ──────────────────────────────────────────
 // ── Graphique en barres SVG : évolution du sale dans le temps ──
+// Palette des catégories de sale pour le graphique d'évolution
+const CHART_KIND_PALETTE = {
+  pm:         {color:"#df5a44", label:"PM",        icon:"👤"},  // rouge
+  gang:       {color:"#A78BFA", label:"Gang",      icon:"🏴"},  // violet
+  entrepots:  {color:"#e3b94a", label:"Entrepôts", icon:"📦"},  // ambre
+  livraisons: {color:"#5AC8E0", label:"Commandes", icon:"🎯"},  // cyan
+};
+
 function BarChart({data, granularity, color, height=200}){
   const [hovered, setHovered] = useState(null);
   if(!data || data.length===0){
@@ -3876,14 +3884,12 @@ function BarChart({data, granularity, color, height=200}){
   const PAD_RIGHT = 16;
   const PAD_TOP = 16;
   const PAD_BOTTOM = 36;
-  // Width sera fluide via viewBox/preserveAspectRatio
   const W = 800;
   const H = height;
   const chartW = W - PAD_LEFT - PAD_RIGHT;
   const chartH = H - PAD_TOP - PAD_BOTTOM;
 
   const maxVal = Math.max(...data.map(d=>d.sale), 1);
-  // Arrondir le max au "joli" plus proche
   const niceMax = (() => {
     const m = maxVal * 1.1;
     const pow = Math.pow(10, Math.floor(Math.log10(m)));
@@ -3893,22 +3899,22 @@ function BarChart({data, granularity, color, height=200}){
   const barGap = 4;
   const barW = Math.max(2, (chartW - barGap*(data.length-1)) / Math.max(1,data.length));
 
-  // Format compacté pour les labels
   const fmtK = (n) => {
     if(n>=1_000_000) return (n/1_000_000).toFixed(n>=10_000_000?0:1)+"M";
     if(n>=1_000) return Math.round(n/1_000)+"k";
     return Math.round(n).toString();
   };
 
-  // Lignes horizontales (4 niveaux)
   const yLines = [0, 0.25, 0.5, 0.75, 1].map(p => ({
     y: PAD_TOP + chartH * (1-p),
     val: niceMax * p
   }));
 
-  // Décider quels labels X afficher (éviter le chevauchement)
   const maxLabels = Math.floor(chartW / 60);
   const stepLabel = Math.max(1, Math.ceil(data.length / maxLabels));
+
+  // Ordre des kinds dans l'empilement (du bas vers le haut)
+  const KIND_ORDER = ["pm", "gang", "entrepots", "livraisons"];
 
   return (
     <div style={{width:"100%",position:"relative"}}>
@@ -3920,36 +3926,68 @@ function BarChart({data, granularity, color, height=200}){
             <text x={PAD_LEFT-8} y={l.y+4} textAnchor="end" fontSize="10" fill={C.muted} fontFamily="monospace">{fmtK(l.val)}</text>
           </g>
         ))}
-        {/* Barres */}
+        {/* Barres empilées */}
         {data.map((d,i)=>{
           const x = PAD_LEFT + i*(barW+barGap);
+          const isHovered = hovered===i;
+          const opacity = hovered===null||isHovered ? 1 : 0.4;
+
+          // Si on a un breakdown par kind, on empile ; sinon barre simple (rétrocompat)
+          if(d.byKind){
+            // Construire les segments dans l'ordre KIND_ORDER, du bas vers le haut
+            let cumulative = 0;
+            const segments = KIND_ORDER
+              .map(kind => ({kind, val: d.byKind[kind]||0}))
+              .filter(seg => seg.val > 0);
+
+            return (
+              <g key={d.key}>
+                {segments.map((seg, segIdx) => {
+                  const segH = niceMax>0 ? chartH * (seg.val/niceMax) : 0;
+                  const segY = PAD_TOP + chartH - cumulative - segH;
+                  cumulative += segH;
+                  const isFirst = segIdx === 0;
+                  const isLast = segIdx === segments.length - 1;
+                  return (
+                    <rect
+                      key={seg.kind}
+                      x={x}
+                      y={segY}
+                      width={barW}
+                      height={Math.max(0, segH)}
+                      fill={CHART_KIND_PALETTE[seg.kind]?.color || color}
+                      opacity={opacity}
+                      style={{transition:"opacity .15s"}}
+                      // Petits radius seulement en haut de la barre (le dernier segment empilé)
+                      rx={isLast?2:0}
+                    />
+                  );
+                })}
+                {/* Zone invisible pour faciliter le hover */}
+                <rect
+                  x={x-barGap/2}
+                  y={PAD_TOP}
+                  width={barW+barGap}
+                  height={chartH}
+                  fill="transparent"
+                  style={{cursor:"pointer"}}
+                  onMouseEnter={()=>setHovered(i)}
+                  onMouseLeave={()=>setHovered(null)}
+                />
+                {i%stepLabel===0&&(
+                  <text x={x+barW/2} y={H-PAD_BOTTOM+16} textAnchor="middle" fontSize="10" fill={C.muted}>{d.label}</text>
+                )}
+              </g>
+            );
+          }
+
+          // Fallback : barre unique
           const h = niceMax>0 ? chartH * (d.sale/niceMax) : 0;
           const y = PAD_TOP + chartH - h;
-          const isHovered = hovered===i;
           return (
             <g key={d.key}>
-              <rect
-                x={x}
-                y={y}
-                width={barW}
-                height={Math.max(0,h)}
-                fill={color}
-                opacity={hovered===null||isHovered?1:0.4}
-                style={{transition:"opacity .15s"}}
-                rx="2"
-              />
-              {/* Zone invisible plus large pour faciliter le hover */}
-              <rect
-                x={x-barGap/2}
-                y={PAD_TOP}
-                width={barW+barGap}
-                height={chartH}
-                fill="transparent"
-                style={{cursor:"pointer"}}
-                onMouseEnter={()=>setHovered(i)}
-                onMouseLeave={()=>setHovered(null)}
-              />
-              {/* Label X (uniquement à intervalles) */}
+              <rect x={x} y={y} width={barW} height={Math.max(0,h)} fill={color} opacity={opacity} style={{transition:"opacity .15s"}} rx="2"/>
+              <rect x={x-barGap/2} y={PAD_TOP} width={barW+barGap} height={chartH} fill="transparent" style={{cursor:"pointer"}} onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}/>
               {i%stepLabel===0&&(
                 <text x={x+barW/2} y={H-PAD_BOTTOM+16} textAnchor="middle" fontSize="10" fill={C.muted}>{d.label}</text>
               )}
@@ -3957,7 +3995,7 @@ function BarChart({data, granularity, color, height=200}){
           );
         })}
       </svg>
-      {/* Tooltip */}
+      {/* Tooltip enrichi avec décomposition */}
       {hovered!==null && data[hovered] && (
         <div style={{
           position:"absolute",
@@ -3972,11 +4010,21 @@ function BarChart({data, granularity, color, height=200}){
           whiteSpace:"nowrap",
           pointerEvents:"none",
           zIndex:10,
-          boxShadow:"0 4px 12px rgba(0,0,0,0.4)"
+          boxShadow:"0 4px 12px rgba(0,0,0,0.4)",
+          minWidth:140
         }}>
-          <div style={{color:C.muted,fontSize:9,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:2}}>{data[hovered].label}</div>
-          <div style={{color,fontWeight:700,fontSize:13}}>{fmt(Math.round(data[hovered].sale))}</div>
-          <div style={{color:C.dim,fontSize:10,marginTop:2}}>{data[hovered].count} transaction{data[hovered].count>1?"s":""}</div>
+          <div style={{color:C.muted,fontSize:9,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{data[hovered].label}</div>
+          <div style={{color:color||C.text,fontWeight:700,fontSize:13,marginBottom:data[hovered].byKind?6:0}}>{fmt(Math.round(data[hovered].sale))}</div>
+          {data[hovered].byKind && KIND_ORDER.filter(k=>(data[hovered].byKind[k]||0)>0).map(k=>(
+            <div key={k} style={{display:"flex",alignItems:"center",gap:6,fontSize:10,color:C.muted,marginTop:2}}>
+              <span style={{width:8,height:8,borderRadius:2,background:CHART_KIND_PALETTE[k].color,display:"inline-block"}}/>
+              <span style={{flex:1}}>{CHART_KIND_PALETTE[k].label}</span>
+              <span style={{color:C.text,fontWeight:600}}>{fmt(Math.round(data[hovered].byKind[k]))}</span>
+            </div>
+          ))}
+          {!data[hovered].byKind && (
+            <div style={{color:C.dim,fontSize:10,marginTop:2}}>{data[hovered].count} transaction{data[hovered].count>1?"s":""}</div>
+          )}
         </div>
       )}
     </div>
@@ -4098,7 +4146,8 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
 
   // ── Données du graphique d'évolution : sale par jour/semaine/mois selon filtres ──
   const chartData=useMemo(()=>{
-    // 1) Construire la liste des "événements" {date:'YYYY-MM-DD', sale:number} selon les filtres actifs
+    // 1) Construire la liste des "événements" {date, sale, kind} selon les filtres actifs
+    // kind ∈ {"pm", "gang", "entrepots", "livraisons"}
     const events = [];
 
     // Calculer le sale d'une transaction (PM ou gang)
@@ -4119,45 +4168,42 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
     // Transactions PM
     if(chartFilter.pm){
       txInPeriod.filter(h=>h.dest==="pm").forEach(h=>{
-        events.push({date:h.date, sale:saleOfTx(h)});
+        events.push({date:h.date, sale:saleOfTx(h), kind:"pm"});
       });
     }
     // Transactions Gang
     if(chartFilter.gang){
       txInPeriod.filter(h=>h.dest==="gang").forEach(h=>{
-        events.push({date:h.date, sale:saleOfTx(h)});
+        events.push({date:h.date, sale:saleOfTx(h), kind:"gang"});
       });
     }
-    // Entrepôts récupérés (sale tel quel, daté sur recup_at en local)
+    // Entrepôts récupérés
     if(chartFilter.entrepots){
       entrepotsInPeriod.forEach(e=>{
         if(!e.recup_at) return;
-        // Convertir le timestamp UTC en date LOCALE YYYY-MM-DD
-        const d = new Date(e.recup_at);
-        const dateLocal = _toLocalDate(d);
-        events.push({date:dateLocal, sale:+e.montant||0});
+        const dateLocal = _toLocalDate(new Date(e.recup_at));
+        events.push({date:dateLocal, sale:+e.montant||0, kind:"entrepots"});
       });
     }
-    // Commandes livrées (sale tel quel, daté sur livree_at)
+    // Commandes livrées
     if(chartFilter.livraisons){
       cmdLivreesInPeriod.forEach(c=>{
         if(!c.livree_at) return;
-        const d = new Date(c.livree_at);
-        const dateLocal = _toLocalDate(d);
-        events.push({date:dateLocal, sale:+c.montant||0});
+        const dateLocal = _toLocalDate(new Date(c.livree_at));
+        events.push({date:dateLocal, sale:+c.montant||0, kind:"livraisons"});
       });
     }
 
     if(events.length===0) return {data:[], granularity:"day"};
 
-    // 2) Déterminer la granularité selon la période d'événements
+    // 2) Granularité
     const dates = events.map(e=>e.date).sort();
     const minDate = new Date(dates[0]+"T00:00:00");
     const maxDate = new Date(dates[dates.length-1]+"T00:00:00");
     const daysDiff = Math.round((maxDate - minDate) / 86400000) + 1;
     const granularity = daysDiff <= 30 ? "day" : daysDiff <= 180 ? "week" : "month";
 
-    // 3) Bucketiser
+    // 3) Bucketiser avec décomposition par kind
     const buckets = new Map();
     events.forEach(ev=>{
       const d = new Date(ev.date+"T00:00:00");
@@ -4183,8 +4229,9 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
         const monthLabels=["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
         label = `${monthLabels[d.getMonth()]} ${String(yy).slice(2)}`;
       }
-      const cur = buckets.get(key) || {key, label, sale:0, count:0};
+      const cur = buckets.get(key) || {key, label, sale:0, count:0, byKind:{pm:0, gang:0, entrepots:0, livraisons:0}};
       cur.sale += ev.sale;
+      cur.byKind[ev.kind] = (cur.byKind[ev.kind]||0) + ev.sale;
       cur.count += 1;
       buckets.set(key, cur);
     });
@@ -4405,15 +4452,16 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
         </span>
       </div>
       <div style={{...card,padding:"16px 18px"}}>
-        {/* Filtres multi-source : PM / Gang / Entrepôts / Livraisons */}
+        {/* Filtres multi-source : PM / Gang / Entrepôts / Commandes */}
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
           {[
-            {key:"pm",        label:"PM",         icon:"👤"},
-            {key:"gang",      label:"Gang",       icon:"🏴"},
-            {key:"entrepots", label:"Entrepôts",  icon:"📦"},
-            {key:"livraisons",label:"Commandes", icon:"🎯"},
+            {key:"pm"},
+            {key:"gang"},
+            {key:"entrepots"},
+            {key:"livraisons"},
           ].map(f=>{
             const on=chartFilter[f.key];
+            const cat=CHART_KIND_PALETTE[f.key];
             return (
               <button
                 key={f.key}
@@ -4421,15 +4469,15 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
                 style={{
                   fontSize:11,
                   padding:"5px 10px",
-                  background:on?"rgba(223,90,68,0.15)":C.surfaceAlt,
-                  color:on?C.red:C.muted,
-                  border:"1px solid "+(on?"rgba(223,90,68,0.4)":C.border),
+                  background:on?cat.color+"26":C.surfaceAlt,  // 26 = ~15% opacity
+                  color:on?cat.color:C.muted,
+                  border:"1px solid "+(on?cat.color+"66":C.border),  // 66 = ~40% opacity
                   fontWeight:on?600:400,
                   opacity:on?1:0.6
                 }}
-                title={on?`Masquer ${f.label}`:`Afficher ${f.label}`}
+                title={on?`Masquer ${cat.label}`:`Afficher ${cat.label}`}
               >
-                {on?"●":"○"} {f.icon} {f.label}
+                {on?"●":"○"} {cat.icon} {cat.label}
               </button>
             );
           })}
