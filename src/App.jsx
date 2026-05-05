@@ -338,7 +338,7 @@ function downloadCSV(filename,content){
 }
 
 // ── Section pliable d'items avec recherche (Transactions) ──
-function ItemsSection({title,pct,items,qtes,onChangeQte,accent,dest}){
+function ItemsSection({title,pct,prixFixeCat,items,qtes,onChangeQte,accent,dest}){
   const [open,setOpen]=useState(false);
   const [q,setQ]=useState("");
   const visibleItems=useMemo(()=>items.filter(it=>it.visible!==false),[items]);
@@ -377,14 +377,23 @@ function ItemsSection({title,pct,items,qtes,onChangeQte,accent,dest}){
             {filtered.length===0
               ?<div style={{textAlign:"center",padding:30,color:C.muted,fontSize:11,fontStyle:"italic"}}>Aucun item trouvé</div>
               :filtered.map(it=>{
-                // Prix payé PM = prix de revente × % de la PM
-                const prixPM = pct>0 ? Math.round(it.prix * pct / 100) : null;
+                // Prix payé : si item prix_fixe → on utilise prixFixeCat (de la catégorie PM)
+                // Sinon : prix de revente × % de la PM
+                let prixPaye = null;
+                let isFixe = false;
+                if(it.prix_fixe){
+                  isFixe = true;
+                  prixPaye = (prixFixeCat>0) ? Math.round(prixFixeCat) : null;
+                } else if(pct>0){
+                  prixPaye = Math.round(it.prix * pct / 100);
+                }
                 return (
                 <div key={it.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
                   <span style={{flex:1,fontSize:13,color:C.text}}>
                     {it.nom}
+                    {isFixe&&<span style={{fontSize:8,padding:"1px 5px",background:"rgba(227,185,74,0.15)",color:C.amber,border:"1px solid rgba(227,185,74,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:5}}>fixe</span>}
                     <span style={{fontSize:11,color:C.muted,marginLeft:5}}>
-                      ({prixPM!==null ? <span style={{color:C.green,fontWeight:600}}>{fmt(prixPM)}</span> : <span style={{fontStyle:"italic"}}>{dest==="gang"?"choisir un Gang":"choisir une PM"}</span>}
+                      ({prixPaye!==null ? <span style={{color:C.green,fontWeight:600}}>{fmt(prixPaye)}</span> : <span style={{fontStyle:"italic"}}>{dest==="gang"?"choisir un Gang":"choisir une PM"}</span>}
                       {it.poids>0&&" · "+fmtKgD(it.poids)})
                     </span>
                   </span>
@@ -712,20 +721,23 @@ function AddItemForm({onAdd}){
   );
 }
 
-function AddCatForm({onAdd}){
+function AddCatForm({onAdd,showPrixFixe}){
   const [nom,setNom]=useState("");
   const [pct,setPct]=useState("");
   const [taux,setTaux]=useState("");
+  const [prixFixe,setPrixFixe]=useState("");
   async function submit(){
     if(!nom)return;
-    await onAdd(nom,pct,taux);
-    setNom(""); setPct(""); setTaux("");
+    await onAdd(nom,pct,taux,prixFixe);
+    setNom(""); setPct(""); setTaux(""); setPrixFixe("");
   }
+  const gridCols = showPrixFixe ? "1fr 70px 80px 80px auto" : "1fr 80px 90px auto";
   return (
-    <div style={{display:"grid",gridTemplateColumns:"1fr 80px 90px auto",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
+    <div style={{display:"grid",gridTemplateColumns:gridCols,gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
       <input style={S.inp} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
       <input type="number" style={S.inp} placeholder="%" value={pct} onChange={e=>setPct(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
       <input type="number" style={S.inp} placeholder="$/liasse" value={taux} onChange={e=>setTaux(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
+      {showPrixFixe&&<input type="number" style={S.inp} placeholder="$ fixe" value={prixFixe} onChange={e=>setPrixFixe(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>}
       <button onClick={submit} style={{fontWeight:700,color:C.green}}>+</button>
     </div>
   );
@@ -836,18 +848,22 @@ const PMSearchInput = memo(function PMSearchInput({initialValue,onChange}){
 }, () => true); // Jamais re-render depuis le parent : le state est totalement local
 
 // Formulaire d'édition d'une CATÉGORIE (PM ou Gang) stable hors de Main
-function EditCatForm({cat,onSave,onCancel}){
+function EditCatForm({cat,onSave,onCancel,showPrixFixe}){
   const [nom,setNom]=useState(cat.nom||"");
   const [pct,setPct]=useState(cat.pct_objets??0);
   const [taux,setTaux]=useState(cat.taux_liasse??0);
+  const [prixFixe,setPrixFixe]=useState(cat.prix_fixe??0);
   function handleSave(){
-    onSave({...cat, nom, pct_objets:+pct||0, taux_liasse:+taux||0});
+    const payload = {...cat, nom, pct_objets:+pct||0, taux_liasse:+taux||0};
+    if(showPrixFixe) payload.prix_fixe = +prixFixe||0;
+    onSave(payload);
   }
   return (
     <>
       <input style={S.inp} value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
       <input type="number" style={S.inp} value={pct} onChange={e=>setPct(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
       <input type="number" style={S.inp} value={taux} onChange={e=>setTaux(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      {showPrixFixe&&<input type="number" style={S.inp} value={prixFixe} onChange={e=>setPrixFixe(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}} placeholder="0"/>}
       <button onClick={handleSave} style={{color:C.green,fontWeight:700}}>OK</button>
     </>
   );
@@ -873,18 +889,23 @@ function EditGangForm({gang,catsGang,onSave,onCancel}){
 }
 
 // Formulaire d'édition d'un ITEM (PM ou Gang) stable hors de Main
-function EditItemForm({item,onSave,onCancel}){
+function EditItemForm({item,onSave,onCancel,isPM}){
   const [nom,setNom]=useState(item.nom||"");
   const [prix,setPrix]=useState(item.prix??0);
   const [poids,setPoids]=useState(item.poids||0);
+  const [prixFixe,setPrixFixe]=useState(!!item.prix_fixe);
   function handleSave(){
-    onSave({...item, nom, prix:+prix||0, poids:+poids||0});
+    onSave({...item, nom, prix:+prix||0, poids:+poids||0, prix_fixe:prixFixe});
   }
   return (
     <>
       <input style={{flex:1,minWidth:0}} value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
       <input data-mobile="col-prix" type="number" style={{width:70}} value={prix} onChange={e=>setPrix(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
       <input data-mobile="col-poids" type="number" step="0.01" min="0" style={{width:65}} value={poids} onChange={e=>setPoids(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
+      {isPM&&<label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:prixFixe?C.amber:C.muted,cursor:"pointer",whiteSpace:"nowrap",userSelect:"none"}} title="Si coché, l'item utilise le 'prix fixe' de la catégorie au lieu du %">
+        <input type="checkbox" checked={prixFixe} onChange={e=>setPrixFixe(e.target.checked)} style={{margin:0,cursor:"pointer"}}/>
+        Fixe
+      </label>}
       <button onClick={handleSave} style={{color:C.green,fontWeight:700}}>OK</button>
     </>
   );
@@ -1183,13 +1204,24 @@ function Main({cu,setCu,onLogout}){
   const selCatG  = selGang? catsGang.find(c=>c.id===selGang.categorie_id)||null: null;
   const aPct     = tx.dest==="pm"?(selCatPM?selCatPM.pct_objets:0):(selCatG?selCatG.pct_objets:0);
   const aLiasse  = tx.dest==="pm"?(selCatPM?selCatPM.taux_liasse:0):(selCatG?selCatG.taux_liasse:0);
+  // Prix fixe de la catégorie : utilisé pour les items marqués prix_fixe (PM uniquement, gangs n'ont pas ce système)
+  const aPrixFixe = tx.dest==="pm"?(selCatPM?+selCatPM.prix_fixe||0:0):0;
 
   const aItems   = tx.dest==="gang"?[...itemsPM,...itemsG]:itemsPM;
 
   const totObj=useMemo(()=>{
-    if(!aPct)return 0;
-    return aItems.reduce((s,it)=>s+it.prix*(+(tx.qtes[it.id])||0)*(aPct/100),0);
-  },[tx.qtes,aPct,aItems]);
+    return aItems.reduce((s,it)=>{
+      const qte = +(tx.qtes[it.id])||0;
+      if(qte<=0) return s;
+      // Item prix fixe (PM uniquement) : on utilise aPrixFixe au lieu du %
+      if(it.prix_fixe && tx.dest==="pm" && aPrixFixe>0){
+        return s + aPrixFixe * qte;
+      }
+      // Sinon : calcul classique avec le %
+      if(!aPct) return s;
+      return s + it.prix * qte * (aPct/100);
+    },0);
+  },[tx.qtes,aPct,aPrixFixe,aItems,tx.dest]);
 
   const totPoids=useMemo(()=>{
     const poidsObjets = aItems.reduce((s,it)=>s+(+(it.poids)||0)*(+(tx.qtes[it.id])||0),0);
@@ -1210,7 +1242,28 @@ function Main({cu,setCu,onLogout}){
     if(tx.dest==="gang"&&!tx.gangId)return;
     if(!totObj&&!totLia&&!totArg)return;
     const types=[]; const det={};
-    if(totObj>0){types.push("objets");det.lignes=aItems.filter(it=>+(tx.qtes[it.id]||0)>0).map(it=>({nom:it.nom,prix:it.prix,qte:+(tx.qtes[it.id]),sous_total:it.prix*(+(tx.qtes[it.id]))*(aPct/100),poids:(+(it.poids)||0)*(+(tx.qtes[it.id]))}));}
+    if(totObj>0){
+      types.push("objets");
+      det.lignes = aItems.filter(it=>+(tx.qtes[it.id]||0)>0).map(it=>{
+        const qte = +(tx.qtes[it.id]);
+        // Item prix fixe (PM uniquement) : sous_total = prix_fixe_cat × qte
+        // Sinon : sous_total = prix × qte × pct/100
+        let sousTotal;
+        if(it.prix_fixe && tx.dest==="pm" && aPrixFixe>0){
+          sousTotal = aPrixFixe * qte;
+        } else {
+          sousTotal = it.prix * qte * (aPct/100);
+        }
+        return {
+          nom: it.nom,
+          prix: it.prix,
+          qte: qte,
+          sous_total: sousTotal,
+          poids: (+(it.poids)||0) * qte,
+          prix_fixe: !!it.prix_fixe // on stocke l'info pour l'historique
+        };
+      });
+    }
     if(totLia>0){types.push("liasses");det.liasse_qte=+(tx.liasseQte);det.taux_liasse=aLiasse;det.valeur_face=70*(+(tx.liasseQte));}
     if(totArg>0&&tx.dest==="pm"){types.push("argent");det.argent_sale=+(tx.argentSale);}
     const mb=members.find(m=>m.id===tx.membreId)||null;
@@ -1629,21 +1682,26 @@ function Main({cu,setCu,onLogout}){
     const isPM=table==="categories_pm";
     async function save(c){
       const before=cats.find(x=>x.id===c.id);
-      await sb.from(table).update({nom:c.nom,pct_objets:c.pct_objets,taux_liasse:c.taux_liasse}).eq("id",c.id);
+      const updateData = {nom:c.nom,pct_objets:c.pct_objets,taux_liasse:c.taux_liasse};
+      if(isPM) updateData.prix_fixe = c.prix_fixe||0;
+      await sb.from(table).update(updateData).eq("id",c.id);
       setCats(cs=>cs.map(x=>x.id===c.id?c:x));setEId(null);
       if(before){
         const ch=[];
         if(before.nom!==c.nom)ch.push(`nom : ${diff(before.nom,c.nom)}`);
         if(+before.pct_objets!==+c.pct_objets)ch.push(`% objets : ${diff(before.pct_objets+"%",c.pct_objets+"%")}`);
         if(+before.taux_liasse!==+c.taux_liasse)ch.push(`$/liasse : ${diff(fmt(before.taux_liasse),fmt(c.taux_liasse))}`);
+        if(isPM && (+before.prix_fixe||0) !== (+c.prix_fixe||0)) ch.push(`prix fixe : ${diff(fmt(before.prix_fixe||0),fmt(c.prix_fixe||0))}`);
         if(ch.length>0) log("settings","cat_update",`a modifié la catégorie ${isPM?"PM":"gang"} <b>${c.nom}</b> · ${ch.join(" · ")}`);
       }
     }
-    async function add(nom,pct,taux){
-      const{data}=await sb.from(table).insert({nom,pct_objets:+pct||0,taux_liasse:+taux||0}).select().single();
+    async function add(nom,pct,taux,prixFixe){
+      const insertData = {nom,pct_objets:+pct||0,taux_liasse:+taux||0};
+      if(isPM) insertData.prix_fixe = +prixFixe||0;
+      const{data}=await sb.from(table).insert(insertData).select().single();
       if(data){
         setCats(p=>[...p,data]);
-        log("settings","cat_create",`a créé la catégorie ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${data.pct_objets}% · ${fmt(data.taux_liasse)}/liasse`);
+        log("settings","cat_create",`a créé la catégorie ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${data.pct_objets}% · ${fmt(data.taux_liasse)}/liasse${isPM&&data.prix_fixe?" · "+fmt(data.prix_fixe)+" fixe":""}`);
       }
     }
     async function del(id){
@@ -1654,13 +1712,26 @@ function Main({cu,setCu,onLogout}){
     }
     const allKey = isPM?"catsPM":"catsGang";
     const visible = showAll[allKey] ? cats : cats.slice(0,PREVIEW);
+    const gridCols = isPM ? "1fr 70px 80px 80px auto" : "1fr 80px 90px auto";
     return <>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 80px 90px auto",gap:8,marginBottom:8}}><span style={S.lbl}>Nom</span><span style={S.lbl}>% objets</span><span style={S.lbl}>$/liasse</span><span/></div>
+      <div style={{display:"grid",gridTemplateColumns:gridCols,gap:8,marginBottom:8}}>
+        <span style={S.lbl}>Nom</span>
+        <span style={S.lbl}>% objets</span>
+        <span style={S.lbl}>$/liasse</span>
+        {isPM&&<span style={S.lbl}>$ fixe</span>}
+        <span/>
+      </div>
       {visible.map(c=>(
-        <div key={c.id} style={{display:"grid",gridTemplateColumns:"1fr 80px 90px auto",gap:8,alignItems:"center",marginBottom:8}}>
+        <div key={c.id} style={{display:"grid",gridTemplateColumns:gridCols,gap:8,alignItems:"center",marginBottom:8}}>
           {isAdmin&&eId===c.id
-            ?<EditCatForm cat={c} onSave={save} onCancel={()=>setEId(null)}/>
-            :<><span style={{fontSize:14,color:C.text}}>{c.nom}</span><span style={{fontSize:13,color:C.muted}}>{c.pct_objets}%</span><span style={{fontSize:13,color:C.muted}}>{c.taux_liasse}$</span>{isAdmin&&<div style={{display:"flex",gap:4}}><button onClick={()=>setEId(c.id)}>Mod.</button><button onClick={()=>del(c.id)} style={{color:C.red}}>×</button></div>}</>
+            ?<EditCatForm cat={c} onSave={save} onCancel={()=>setEId(null)} showPrixFixe={isPM}/>
+            :<>
+              <span style={{fontSize:14,color:C.text}}>{c.nom}</span>
+              <span style={{fontSize:13,color:C.muted}}>{c.pct_objets}%</span>
+              <span style={{fontSize:13,color:C.muted}}>{c.taux_liasse}$</span>
+              {isPM&&<span style={{fontSize:13,color:c.prix_fixe?C.amber:C.dim}}>{c.prix_fixe?fmt(c.prix_fixe):"—"}</span>}
+              {isAdmin&&<div style={{display:"flex",gap:4}}><button onClick={()=>setEId(c.id)}>Mod.</button><button onClick={()=>del(c.id)} style={{color:C.red}}>×</button></div>}
+            </>
           }
         </div>
       ))}
@@ -1669,7 +1740,7 @@ function Main({cu,setCu,onLogout}){
           {showAll[allKey]?"▲ Réduire":`▼ Voir tous (${cats.length})`}
         </button>
       )}
-      {isAdmin&&<AddCatForm onAdd={add}/>}
+      {isAdmin&&<AddCatForm onAdd={add} showPrixFixe={isPM}/>}
     </>;
   }
 
@@ -1912,7 +1983,9 @@ function Main({cu,setCu,onLogout}){
     const isPM=table==="items_pm";
     async function save(it){
       const before=items.find(x=>x.id===it.id);
-      await sb.from(table).update({nom:it.nom,prix:it.prix,poids:+it.poids||0}).eq("id",it.id);
+      const updateData = {nom:it.nom,prix:it.prix,poids:+it.poids||0};
+      if(isPM) updateData.prix_fixe = !!it.prix_fixe;
+      await sb.from(table).update(updateData).eq("id",it.id);
       setItems(is=>is.map(x=>x.id===it.id?it:x));
       setEId(null);
       if(before){
@@ -1920,6 +1993,7 @@ function Main({cu,setCu,onLogout}){
         if(before.nom!==it.nom)ch.push(`nom : ${diff(before.nom,it.nom)}`);
         if(+before.prix!==+it.prix)ch.push(`prix : ${diff(fmt(before.prix),fmt(it.prix))}`);
         if(+(before.poids||0)!==+(it.poids||0))ch.push(`poids : ${diff(fmtKgD(before.poids||0),fmtKgD(it.poids||0))}`);
+        if(isPM && !!before.prix_fixe !== !!it.prix_fixe) ch.push(it.prix_fixe?"passé en prix fixe":"passé en pourcentage");
         if(ch.length>0) log("items","update",`a modifié l'item ${isPM?"PM":"gang"} <b>${it.nom}</b> · ${ch.join(" · ")}`);
       }
     }
@@ -1973,11 +2047,12 @@ function Main({cu,setCu,onLogout}){
             }
 
             {canEdit&&eId===it.id
-              ?<EditItemForm item={it} onSave={save} onCancel={()=>setEId(null)}/>
+              ?<EditItemForm item={it} onSave={save} onCancel={()=>setEId(null)} isPM={isPM}/>
               :<>
                 <span style={{flex:1,minWidth:0,fontSize:14,color:C.text,wordBreak:"break-word"}}>
                   {it.nom}
                   {!visible&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(224,85,85,0.15)",color:C.red,border:"1px solid rgba(224,85,85,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:6}}>masqué</span>}
+                  {isPM&&it.prix_fixe&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(227,185,74,0.15)",color:C.amber,border:"1px solid rgba(227,185,74,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:6}}>fixe</span>}
                 </span>
                 <span data-mobile="col-prix" style={{width:70,fontSize:13,color:C.muted,textAlign:"right",whiteSpace:"nowrap"}}>{fmt(it.prix)}</span>
                 <span data-mobile="col-poids" style={{width:65,fontSize:13,color:C.blue,textAlign:"right",whiteSpace:"nowrap"}}>{fmtKgD(it.poids||0)}</span>
@@ -2415,10 +2490,10 @@ function Main({cu,setCu,onLogout}){
 
           <div style={{marginBottom:14}}>
             {tx.dest==="pm"
-              ? <ItemsSection title="Objets" pct={aPct} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte} dest={tx.dest}/>
+              ? <ItemsSection title="Objets" pct={aPct} prixFixeCat={aPrixFixe} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte} dest={tx.dest}/>
               : <>
-                  <ItemsSection title="Objets classiques" pct={aPct} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte} dest={tx.dest}/>
-                  <ItemsSection title="Objets gang" pct={aPct} items={itemsG} qtes={tx.qtes} onChangeQte={setQte} accent={C.amber} dest={tx.dest}/>
+                  <ItemsSection title="Objets classiques" pct={aPct} prixFixeCat={aPrixFixe} items={itemsPM} qtes={tx.qtes} onChangeQte={setQte} dest={tx.dest}/>
+                  <ItemsSection title="Objets gang" pct={aPct} prixFixeCat={aPrixFixe} items={itemsG} qtes={tx.qtes} onChangeQte={setQte} accent={C.amber} dest={tx.dest}/>
                 </>
             }
           </div>
