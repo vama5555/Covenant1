@@ -112,6 +112,8 @@ div,span,p,h1,h2,h3,label{color:inherit;}
   /* Apparts vue grille : 1 colonne */
   /* Apparts vue grille : 3 colonnes desktop, 2 sur tablette, 1 sur mobile */
   [data-mobile="apparts-grid"]{grid-template-columns:1fr 1fr!important;}
+  /* Stock commandes : 2 colonnes desktop → 1 colonne mobile (inputs trop serrés sinon) */
+  [data-mobile="stock-grid"]{grid-template-columns:1fr!important;}
   /* Bigbrother filtres : 2x2 puis wrap */
   [data-mobile="bb-filters"]{grid-template-columns:1fr 1fr!important;gap:6px!important;}
   [data-mobile="bb-filters"]>div>div{font-size:9px!important;margin-bottom:2px!important;}
@@ -3305,7 +3307,7 @@ function Main({cu,setCu,onLogout}){
                 Aucun item suivi. Utilise le bouton "+ Item" ci-dessus pour configurer ce qui doit être stocké à Londres.
               </div>
             ) : (
-              <div data-mobile="stock-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>
+              <div data-mobile="stock-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 {stockLondres.map(s=>{
                   const isLow = s.quantite < s.seuil;
                   // Trouver le poids de l'item référencé
