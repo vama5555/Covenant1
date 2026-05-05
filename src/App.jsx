@@ -16,6 +16,10 @@ const fmt   = n => Math.round(+n||0).toLocaleString("fr-FR")+"$";
 const fmtKg = n => Math.round(+n||0)+" Kg";
 const fmtKgD = n => (Math.round((+n||0)*100)/100).toFixed(2)+" Kg";
 const pv    = (v,max) => Math.min(100,Math.round((v/Math.max(1,max))*100));
+// Détection automatique des items à prix fixe (ex: Boîte ATM)
+// Match exact sur "boite atm" (insensible à la casse et aux accents)
+const _strip = s => (s||"").toString().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+const isATM = it => _strip(it?.nom) === "boite atm";
 // Helpers de date — utilisent la date LOCALE (pas UTC) pour éviter les décalages de fuseau horaire
 const _toLocalDate = d => {
   const y=d.getFullYear();
@@ -377,12 +381,11 @@ function ItemsSection({title,pct,prixFixeCat,items,qtes,onChangeQte,accent,dest}
             {filtered.length===0
               ?<div style={{textAlign:"center",padding:30,color:C.muted,fontSize:11,fontStyle:"italic"}}>Aucun item trouvé</div>
               :filtered.map(it=>{
-                // Prix payé : si item prix_fixe → on utilise prixFixeCat (de la catégorie PM)
+                // Prix payé : si Boîte ATM (détection auto par nom) → prix fixe de la catégorie PM
                 // Sinon : prix de revente × % de la PM
                 let prixPaye = null;
-                let isFixe = false;
-                if(it.prix_fixe){
-                  isFixe = true;
+                const isItATM = isATM(it);
+                if(isItATM){
                   prixPaye = (prixFixeCat>0) ? Math.round(prixFixeCat) : null;
                 } else if(pct>0){
                   prixPaye = Math.round(it.prix * pct / 100);
@@ -391,7 +394,6 @@ function ItemsSection({title,pct,prixFixeCat,items,qtes,onChangeQte,accent,dest}
                 <div key={it.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
                   <span style={{flex:1,fontSize:13,color:C.text}}>
                     {it.nom}
-                    {isFixe&&<span style={{fontSize:8,padding:"1px 5px",background:"rgba(227,185,74,0.15)",color:C.amber,border:"1px solid rgba(227,185,74,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:5}}>fixe</span>}
                     <span style={{fontSize:11,color:C.muted,marginLeft:5}}>
                       ({prixPaye!==null ? <span style={{color:C.green,fontWeight:600}}>{fmt(prixPaye)}</span> : <span style={{fontStyle:"italic"}}>{dest==="gang"?"choisir un Gang":"choisir une PM"}</span>}
                       {it.poids>0&&" · "+fmtKgD(it.poids)})
@@ -737,7 +739,7 @@ function AddCatForm({onAdd,showPrixFixe}){
       <input style={S.inp} placeholder="Nom" value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
       <input type="number" style={S.inp} placeholder="%" value={pct} onChange={e=>setPct(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
       <input type="number" style={S.inp} placeholder="$/liasse" value={taux} onChange={e=>setTaux(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
-      {showPrixFixe&&<input type="number" style={S.inp} placeholder="$ fixe" value={prixFixe} onChange={e=>setPrixFixe(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>}
+      {showPrixFixe&&<input type="number" style={S.inp} placeholder="$ ATM" value={prixFixe} onChange={e=>setPrixFixe(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>}
       <button onClick={submit} style={{fontWeight:700,color:C.green}}>+</button>
     </div>
   );
@@ -893,19 +895,14 @@ function EditItemForm({item,onSave,onCancel,isPM}){
   const [nom,setNom]=useState(item.nom||"");
   const [prix,setPrix]=useState(item.prix??0);
   const [poids,setPoids]=useState(item.poids||0);
-  const [prixFixe,setPrixFixe]=useState(!!item.prix_fixe);
   function handleSave(){
-    onSave({...item, nom, prix:+prix||0, poids:+poids||0, prix_fixe:prixFixe});
+    onSave({...item, nom, prix:+prix||0, poids:+poids||0});
   }
   return (
     <>
       <input style={{flex:1,minWidth:0}} value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
       <input data-mobile="col-prix" type="number" style={{width:70}} value={prix} onChange={e=>setPrix(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
       <input data-mobile="col-poids" type="number" step="0.01" min="0" style={{width:65}} value={poids} onChange={e=>setPoids(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")handleSave();if(e.key==="Escape")onCancel();}}/>
-      {isPM&&<label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:prixFixe?C.amber:C.muted,cursor:"pointer",whiteSpace:"nowrap",userSelect:"none"}} title="Si coché, l'item utilise le 'prix fixe' de la catégorie au lieu du %">
-        <input type="checkbox" checked={prixFixe} onChange={e=>setPrixFixe(e.target.checked)} style={{margin:0,cursor:"pointer"}}/>
-        Fixe
-      </label>}
       <button onClick={handleSave} style={{color:C.green,fontWeight:700}}>OK</button>
     </>
   );
@@ -1213,8 +1210,8 @@ function Main({cu,setCu,onLogout}){
     return aItems.reduce((s,it)=>{
       const qte = +(tx.qtes[it.id])||0;
       if(qte<=0) return s;
-      // Item prix fixe (PM uniquement) : on utilise aPrixFixe au lieu du %
-      if(it.prix_fixe && tx.dest==="pm" && aPrixFixe>0){
+      // Boîte ATM (détection auto par nom, PM uniquement) : on utilise aPrixFixe au lieu du %
+      if(isATM(it) && tx.dest==="pm" && aPrixFixe>0){
         return s + aPrixFixe * qte;
       }
       // Sinon : calcul classique avec le %
@@ -1246,10 +1243,10 @@ function Main({cu,setCu,onLogout}){
       types.push("objets");
       det.lignes = aItems.filter(it=>+(tx.qtes[it.id]||0)>0).map(it=>{
         const qte = +(tx.qtes[it.id]);
-        // Item prix fixe (PM uniquement) : sous_total = prix_fixe_cat × qte
+        // Boîte ATM (détection auto, PM uniquement) : sous_total = prix_fixe_cat × qte
         // Sinon : sous_total = prix × qte × pct/100
         let sousTotal;
-        if(it.prix_fixe && tx.dest==="pm" && aPrixFixe>0){
+        if(isATM(it) && tx.dest==="pm" && aPrixFixe>0){
           sousTotal = aPrixFixe * qte;
         } else {
           sousTotal = it.prix * qte * (aPct/100);
@@ -1259,8 +1256,7 @@ function Main({cu,setCu,onLogout}){
           prix: it.prix,
           qte: qte,
           sous_total: sousTotal,
-          poids: (+(it.poids)||0) * qte,
-          prix_fixe: !!it.prix_fixe // on stocke l'info pour l'historique
+          poids: (+(it.poids)||0) * qte
         };
       });
     }
@@ -1691,7 +1687,7 @@ function Main({cu,setCu,onLogout}){
         if(before.nom!==c.nom)ch.push(`nom : ${diff(before.nom,c.nom)}`);
         if(+before.pct_objets!==+c.pct_objets)ch.push(`% objets : ${diff(before.pct_objets+"%",c.pct_objets+"%")}`);
         if(+before.taux_liasse!==+c.taux_liasse)ch.push(`$/liasse : ${diff(fmt(before.taux_liasse),fmt(c.taux_liasse))}`);
-        if(isPM && (+before.prix_fixe||0) !== (+c.prix_fixe||0)) ch.push(`prix fixe : ${diff(fmt(before.prix_fixe||0),fmt(c.prix_fixe||0))}`);
+        if(isPM && (+before.prix_fixe||0) !== (+c.prix_fixe||0)) ch.push(`prix ATM : ${diff(fmt(before.prix_fixe||0),fmt(c.prix_fixe||0))}`);
         if(ch.length>0) log("settings","cat_update",`a modifié la catégorie ${isPM?"PM":"gang"} <b>${c.nom}</b> · ${ch.join(" · ")}`);
       }
     }
@@ -1701,7 +1697,7 @@ function Main({cu,setCu,onLogout}){
       const{data}=await sb.from(table).insert(insertData).select().single();
       if(data){
         setCats(p=>[...p,data]);
-        log("settings","cat_create",`a créé la catégorie ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${data.pct_objets}% · ${fmt(data.taux_liasse)}/liasse${isPM&&data.prix_fixe?" · "+fmt(data.prix_fixe)+" fixe":""}`);
+        log("settings","cat_create",`a créé la catégorie ${isPM?"PM":"gang"} <b>${data.nom}</b> · ${data.pct_objets}% · ${fmt(data.taux_liasse)}/liasse${isPM&&data.prix_fixe?" · "+fmt(data.prix_fixe)+" ATM":""}`);
       }
     }
     async function del(id){
@@ -1718,7 +1714,7 @@ function Main({cu,setCu,onLogout}){
         <span style={S.lbl}>Nom</span>
         <span style={S.lbl}>% objets</span>
         <span style={S.lbl}>$/liasse</span>
-        {isPM&&<span style={S.lbl}>$ fixe</span>}
+        {isPM&&<span style={S.lbl}>$ ATM</span>}
         <span/>
       </div>
       {visible.map(c=>(
@@ -1983,9 +1979,7 @@ function Main({cu,setCu,onLogout}){
     const isPM=table==="items_pm";
     async function save(it){
       const before=items.find(x=>x.id===it.id);
-      const updateData = {nom:it.nom,prix:it.prix,poids:+it.poids||0};
-      if(isPM) updateData.prix_fixe = !!it.prix_fixe;
-      await sb.from(table).update(updateData).eq("id",it.id);
+      await sb.from(table).update({nom:it.nom,prix:it.prix,poids:+it.poids||0}).eq("id",it.id);
       setItems(is=>is.map(x=>x.id===it.id?it:x));
       setEId(null);
       if(before){
@@ -1993,7 +1987,6 @@ function Main({cu,setCu,onLogout}){
         if(before.nom!==it.nom)ch.push(`nom : ${diff(before.nom,it.nom)}`);
         if(+before.prix!==+it.prix)ch.push(`prix : ${diff(fmt(before.prix),fmt(it.prix))}`);
         if(+(before.poids||0)!==+(it.poids||0))ch.push(`poids : ${diff(fmtKgD(before.poids||0),fmtKgD(it.poids||0))}`);
-        if(isPM && !!before.prix_fixe !== !!it.prix_fixe) ch.push(it.prix_fixe?"passé en prix fixe":"passé en pourcentage");
         if(ch.length>0) log("items","update",`a modifié l'item ${isPM?"PM":"gang"} <b>${it.nom}</b> · ${ch.join(" · ")}`);
       }
     }
@@ -2052,7 +2045,6 @@ function Main({cu,setCu,onLogout}){
                 <span style={{flex:1,minWidth:0,fontSize:14,color:C.text,wordBreak:"break-word"}}>
                   {it.nom}
                   {!visible&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(224,85,85,0.15)",color:C.red,border:"1px solid rgba(224,85,85,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:6}}>masqué</span>}
-                  {isPM&&it.prix_fixe&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(227,185,74,0.15)",color:C.amber,border:"1px solid rgba(227,185,74,0.3)",borderRadius:3,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",marginLeft:6}}>fixe</span>}
                 </span>
                 <span data-mobile="col-prix" style={{width:70,fontSize:13,color:C.muted,textAlign:"right",whiteSpace:"nowrap"}}>{fmt(it.prix)}</span>
                 <span data-mobile="col-poids" style={{width:65,fontSize:13,color:C.blue,textAlign:"right",whiteSpace:"nowrap"}}>{fmtKgD(it.poids||0)}</span>
