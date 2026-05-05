@@ -1356,7 +1356,10 @@ function Main({cu,setCu,onLogout}){
   const norm = s => (s||"").toLowerCase().trim().replace(/\s+/g," ");
   const filtH=useMemo(()=>{
     let matchFilter = null; // null = pas de filtre
-    if(hFil.who){
+    let allOfDest = null;   // "pm" ou "gang" si on filtre tous les PM ou tous les Gangs
+    if(hFil.who==="all_pm") allOfDest = "pm";
+    else if(hFil.who==="all_gang") allOfDest = "gang";
+    else if(hFil.who){
       const [dest,...rest] = hFil.who.split(":");
       const nom = rest.join(":");
       // Si c'est un nom de groupe : on matche par ID du groupe + noms des PM du groupe
@@ -1382,6 +1385,11 @@ function Main({cu,setCu,onLogout}){
       }
     }
     return history.filter(h=>{
+      // Filtre "Toutes les PM" / "Tous les gangs"
+      if(allOfDest){
+        if(h.dest!==allOfDest) return false;
+        return h.date>=hFrom&&h.date<=hTo;
+      }
       if(matchFilter){
         if(h.dest!==matchFilter.dest) return false;
         // Match par ID groupe (le plus fiable)
@@ -2542,6 +2550,8 @@ function Main({cu,setCu,onLogout}){
             {hType==="transactions"&&(
               <select value={hFil.who} onChange={e=>setHFil(f=>({...f,who:e.target.value}))} style={{flex:"0 1 auto",minWidth:200}}>
                 <option value="">Toutes les PM / gangs</option>
+                <option value="all_pm">— Toutes les PM —</option>
+                <option value="all_gang">— Tous les gangs —</option>
                 {whoOpts.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
               </select>
             )}
