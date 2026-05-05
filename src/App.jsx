@@ -2986,6 +2986,128 @@ function Main({cu,setCu,onLogout}){
 }
 
 // ── Composant onglet Stats ──────────────────────────────────────────
+// ── Graphique en barres SVG : évolution du sale dans le temps ──
+function BarChart({data, granularity, color, height=200}){
+  const [hovered, setHovered] = useState(null);
+  if(!data || data.length===0){
+    return (
+      <div style={{textAlign:"center",padding:40,color:C.muted,fontSize:12,fontStyle:"italic"}}>
+        Aucune donnée pour la période sélectionnée
+      </div>
+    );
+  }
+
+  const PAD_LEFT = 60;
+  const PAD_RIGHT = 16;
+  const PAD_TOP = 16;
+  const PAD_BOTTOM = 36;
+  // Width sera fluide via viewBox/preserveAspectRatio
+  const W = 800;
+  const H = height;
+  const chartW = W - PAD_LEFT - PAD_RIGHT;
+  const chartH = H - PAD_TOP - PAD_BOTTOM;
+
+  const maxVal = Math.max(...data.map(d=>d.sale), 1);
+  // Arrondir le max au "joli" plus proche
+  const niceMax = (() => {
+    const m = maxVal * 1.1;
+    const pow = Math.pow(10, Math.floor(Math.log10(m)));
+    return Math.ceil(m/pow)*pow;
+  })();
+
+  const barGap = 4;
+  const barW = Math.max(2, (chartW - barGap*(data.length-1)) / Math.max(1,data.length));
+
+  // Format compacté pour les labels
+  const fmtK = (n) => {
+    if(n>=1_000_000) return (n/1_000_000).toFixed(n>=10_000_000?0:1)+"M";
+    if(n>=1_000) return Math.round(n/1_000)+"k";
+    return Math.round(n).toString();
+  };
+
+  // Lignes horizontales (4 niveaux)
+  const yLines = [0, 0.25, 0.5, 0.75, 1].map(p => ({
+    y: PAD_TOP + chartH * (1-p),
+    val: niceMax * p
+  }));
+
+  // Décider quels labels X afficher (éviter le chevauchement)
+  const maxLabels = Math.floor(chartW / 60);
+  const stepLabel = Math.max(1, Math.ceil(data.length / maxLabels));
+
+  return (
+    <div style={{width:"100%",position:"relative"}}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}} preserveAspectRatio="none">
+        {/* Grille horizontale + labels Y */}
+        {yLines.map((l,i)=>(
+          <g key={i}>
+            <line x1={PAD_LEFT} x2={W-PAD_RIGHT} y1={l.y} y2={l.y} stroke={C.border} strokeWidth="1" strokeDasharray={i===0?"":"3,3"} opacity={i===0?0.6:0.3}/>
+            <text x={PAD_LEFT-8} y={l.y+4} textAnchor="end" fontSize="10" fill={C.muted} fontFamily="monospace">{fmtK(l.val)}</text>
+          </g>
+        ))}
+        {/* Barres */}
+        {data.map((d,i)=>{
+          const x = PAD_LEFT + i*(barW+barGap);
+          const h = niceMax>0 ? chartH * (d.sale/niceMax) : 0;
+          const y = PAD_TOP + chartH - h;
+          const isHovered = hovered===i;
+          return (
+            <g key={d.key}>
+              <rect
+                x={x}
+                y={y}
+                width={barW}
+                height={Math.max(0,h)}
+                fill={color}
+                opacity={hovered===null||isHovered?1:0.4}
+                style={{transition:"opacity .15s"}}
+                rx="2"
+              />
+              {/* Zone invisible plus large pour faciliter le hover */}
+              <rect
+                x={x-barGap/2}
+                y={PAD_TOP}
+                width={barW+barGap}
+                height={chartH}
+                fill="transparent"
+                style={{cursor:"pointer"}}
+                onMouseEnter={()=>setHovered(i)}
+                onMouseLeave={()=>setHovered(null)}
+              />
+              {/* Label X (uniquement à intervalles) */}
+              {i%stepLabel===0&&(
+                <text x={x+barW/2} y={H-PAD_BOTTOM+16} textAnchor="middle" fontSize="10" fill={C.muted}>{d.label}</text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      {/* Tooltip */}
+      {hovered!==null && data[hovered] && (
+        <div style={{
+          position:"absolute",
+          top:0,
+          left:`${(PAD_LEFT + hovered*(barW+barGap) + barW/2) / W * 100}%`,
+          transform:"translateX(-50%)",
+          background:C.bg,
+          border:"1px solid "+C.border,
+          borderRadius:6,
+          padding:"6px 10px",
+          fontSize:11,
+          whiteSpace:"nowrap",
+          pointerEvents:"none",
+          zIndex:10,
+          boxShadow:"0 4px 12px rgba(0,0,0,0.4)"
+        }}>
+          <div style={{color:C.muted,fontSize:9,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:2}}>{data[hovered].label}</div>
+          <div style={{color,fontWeight:700,fontSize:13}}>{fmt(Math.round(data[hovered].sale))}</div>
+          <div style={{color:C.dim,fontSize:10,marginTop:2}}>{data[hovered].count} transaction{data[hovered].count>1?"s":""}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatsView({history,blanchHistory,pms,pmGroupes,setTab,setHFil,setHFrom,setHTo}){
   const [period,setPeriod]=useState("7"); // "today" | "7" | "30" | "total"
 
@@ -3066,6 +3188,71 @@ function StatsView({history,blanchHistory,pms,pmGroupes,setTab,setHFil,setHFrom,
       }
     });
     return Math.round(v);
+  },[txInPeriod]);
+
+  // ── Données du graphique d'évolution : sale généré par jour/semaine/mois ──
+  const chartData=useMemo(()=>{
+    if(txInPeriod.length===0) return {data:[], granularity:"day"};
+
+    // Calculer le sale généré pour une transaction
+    const saleOf = (h) => {
+      let v=0;
+      if(h.types?.includes("objets")&&h.lignes){
+        h.lignes.forEach(l=>{ v+=(+l.prix||0)*(+l.qte||0); });
+      }
+      if(h.types?.includes("liasses")){
+        v+=(+h.valeur_face||((+h.liasse_qte||0)*70));
+      }
+      if(h.types?.includes("argent")){
+        v+=(+h.argent_sale||0);
+      }
+      return v;
+    };
+
+    // Déterminer la granularité selon la période
+    const dates = txInPeriod.map(h=>h.date).sort();
+    const minDate = new Date(dates[0]+"T00:00:00");
+    const maxDate = new Date(dates[dates.length-1]+"T00:00:00");
+    const daysDiff = Math.round((maxDate - minDate) / 86400000) + 1;
+    const granularity = daysDiff <= 30 ? "day" : daysDiff <= 180 ? "week" : "month";
+
+    // Bucketiser
+    const buckets = new Map();
+    txInPeriod.forEach(h=>{
+      const d = new Date(h.date+"T00:00:00");
+      let key, label;
+      if(granularity==="day"){
+        key = h.date;
+        // Format DD/MM
+        const dd=String(d.getDate()).padStart(2,"0");
+        const mm=String(d.getMonth()+1).padStart(2,"0");
+        label = `${dd}/${mm}`;
+      } else if(granularity==="week"){
+        // Lundi de la semaine
+        const dayOfWeek = (d.getDay()+6)%7; // 0=Lundi, 6=Dimanche
+        const monday = new Date(d);
+        monday.setDate(d.getDate()-dayOfWeek);
+        const yy=monday.getFullYear();
+        const mm=String(monday.getMonth()+1).padStart(2,"0");
+        const dd=String(monday.getDate()).padStart(2,"0");
+        key = `${yy}-${mm}-${dd}`;
+        label = `S. ${dd}/${mm}`;
+      } else {
+        const yy=d.getFullYear();
+        const mm=String(d.getMonth()+1).padStart(2,"0");
+        key = `${yy}-${mm}`;
+        const monthLabels=["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
+        label = `${monthLabels[d.getMonth()]} ${String(yy).slice(2)}`;
+      }
+      const cur = buckets.get(key) || {key, label, sale:0, count:0};
+      cur.sale += saleOf(h);
+      cur.count += 1;
+      buckets.set(key, cur);
+    });
+
+    // Sort by key (chronological)
+    const data = Array.from(buckets.values()).sort((a,b)=>a.key.localeCompare(b.key));
+    return {data, granularity};
   },[txInPeriod]);
 
   // Total blanchi sur la période
@@ -3249,6 +3436,18 @@ function StatsView({history,blanchHistory,pms,pmGroupes,setTab,setHFil,setHFrom,
             </div>
           );
         })}
+      </div>
+
+      {/* ── Section : Évolution dans le temps ── */}
+      <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.12em",margin:"18px 0 10px",display:"flex",alignItems:"center",gap:10}}>
+        <span>📊 Évolution du sale généré</span>
+        <div style={{flex:1,height:1,background:C.border}}/>
+        <span style={{textTransform:"none",letterSpacing:"normal",color:C.dim,fontSize:10,fontWeight:500}}>
+          {chartData.granularity==="day"?"par jour":chartData.granularity==="week"?"par semaine":"par mois"}
+        </span>
+      </div>
+      <div style={{...card,padding:"16px 18px"}}>
+        <BarChart data={chartData.data} granularity={chartData.granularity} color={C.red}/>
       </div>
 
       {/* ── Section 2 : Top ── */}
