@@ -530,7 +530,7 @@ function MemberCard({m,low,setMembers,onLog,dense,idx,total}){
 }
 
 // ── Carte d'un appart avec save sur blur / Entrée (anti-lag Realtime) ──
-function AppartCard({a,updateAppart,copied,setCopied,isLondres,stockLondres,itemsPM,itemsG,isAdmin,onAddStockItem,onRemoveStockItem,onUpdateStockQty,onUpdateStockSeuil}){
+function AppartCard({a,updateAppart,copied,setCopied}){
   const ac=getCat(a.categorie);
   const [coffre,setCoffre]=useState(String(a.coffre));
   const [stock,setStock]=useState(String(a.stock));
@@ -623,32 +623,17 @@ function AppartCard({a,updateAppart,copied,setCopied,isLondres,stockLondres,item
           <Bar val={a.stock} max={a.max_stock}/>
         </div>
       </div>
-
-      {/* Section Stock Londres */}
-      {isLondres && stockLondres && (
-        <LondresStockSection
-          stockLondres={stockLondres}
-          itemsPM={itemsPM}
-          itemsG={itemsG}
-          isAdmin={isAdmin}
-          onAddStockItem={onAddStockItem}
-          onRemoveStockItem={onRemoveStockItem}
-          onUpdateStockQty={onUpdateStockQty}
-          onUpdateStockSeuil={onUpdateStockSeuil}
-        />
-      )}
     </div>
   );
 }
 
-// Section Stock Londres : liste des items suivis avec quantité + seuil + ajout
-function LondresStockSection({stockLondres,itemsPM,itemsG,isAdmin,onAddStockItem,onRemoveStockItem,onUpdateStockQty,onUpdateStockSeuil}){
-  const [showAdd, setShowAdd] = useState(false);
+// Bouton + popover compact pour ajouter un item au stock Londres
+function LondresStockAddInline({stockLondres,itemsPM,itemsG,onAddStockItem}){
+  const [open, setOpen] = useState(false);
   const [addType, setAddType] = useState("pm");
   const [addItemId, setAddItemId] = useState("");
   const [addSeuil, setAddSeuil] = useState("5");
 
-  // Items disponibles à ajouter (pas déjà dans le stock)
   const availableItems = useMemo(()=>{
     const usedKeys = new Set(stockLondres.map(s => s.item_type+":"+s.item_id));
     const list = addType==="pm" ? itemsPM : itemsG;
@@ -663,68 +648,26 @@ function LondresStockSection({stockLondres,itemsPM,itemsG,isAdmin,onAddStockItem
     setAddSeuil("5");
   }
 
+  if(!open){
+    return (
+      <button onClick={()=>setOpen(true)} style={{fontSize:11,padding:"5px 12px",fontWeight:700,color:C.amber,border:"1px solid "+C.border}}>
+        + Item
+      </button>
+    );
+  }
   return (
-    <div style={{borderTop:"1px solid "+C.border,paddingTop:12,marginTop:12}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-        <span style={{fontSize:10,fontWeight:700,color:C.amber,textTransform:"uppercase",letterSpacing:"0.08em"}}>
-          📦 Stock commandes
-        </span>
-        <button onClick={()=>setShowAdd(s=>!s)} style={{fontSize:10,padding:"3px 8px",color:C.amber,border:"1px solid "+C.border}}>
-          {showAdd?"− Annuler":"+ Item"}
-        </button>
-      </div>
-
-      {showAdd && (
-        <div style={{background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,padding:8,marginBottom:10}}>
-          <div style={{display:"grid",gridTemplateColumns:"60px 1fr 60px auto",gap:6,alignItems:"center"}}>
-            <select value={addType} onChange={e=>{setAddType(e.target.value);setAddItemId("");}} style={{fontSize:11}}>
-              <option value="pm">PM</option>
-              <option value="gang">Gang</option>
-            </select>
-            <select value={addItemId} onChange={e=>setAddItemId(e.target.value)} style={{fontSize:11,minWidth:0}}>
-              <option value="">— item —</option>
-              {availableItems.map(i => <option key={i.id} value={i.id}>{i.nom}</option>)}
-            </select>
-            <input type="number" min="0" placeholder="Seuil" value={addSeuil} onChange={e=>setAddSeuil(e.target.value)} style={{fontSize:11,width:60,textAlign:"center"}} title="Seuil d'alerte"/>
-            <button onClick={handleAdd} disabled={!addItemId} style={{fontSize:11,padding:"4px 8px",fontWeight:700,color:addItemId?C.green:C.dim,opacity:addItemId?1:0.5}}>OK</button>
-          </div>
-        </div>
-      )}
-
-      {stockLondres.length===0 ? (
-        <div style={{fontSize:11,color:C.muted,fontStyle:"italic",padding:"6px 0",textAlign:"center"}}>
-          Aucun item suivi. Clique sur "+ Item" pour configurer.
-        </div>
-      ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          {stockLondres.map(s=>{
-            const isLow = s.quantite < s.seuil;
-            return (
-              <div key={s.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px",background:isLow?"rgba(223,90,68,0.08)":"transparent",borderRadius:4,fontSize:12}}>
-                <span style={{flex:1,minWidth:0,color:isLow?C.red:C.text,fontWeight:isLow?600:400,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.item_nom}</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={s.quantite}
-                  onChange={e=>onUpdateStockQty(s.id, e.target.value)}
-                  style={{width:56,textAlign:"center",fontSize:12,padding:"3px 4px",fontWeight:700,color:isLow?C.red:C.text}}
-                  title="Quantité actuelle"
-                />
-                <span style={{fontSize:9,color:C.dim}}>/ </span>
-                <input
-                  type="number"
-                  min="0"
-                  value={s.seuil}
-                  onChange={e=>onUpdateStockSeuil(s.id, e.target.value)}
-                  style={{width:42,textAlign:"center",fontSize:11,padding:"3px 4px",color:C.muted}}
-                  title="Seuil d'alerte"
-                />
-                {isAdmin&&<button onClick={()=>{if(window.confirm(`Retirer ${s.item_nom} du suivi ?`))onRemoveStockItem(s.id);}} style={{fontSize:10,padding:"2px 5px",color:C.red}}>×</button>}
-              </div>
-            );
-          })}
-        </div>
-      )}
+    <div style={{display:"flex",alignItems:"center",gap:6,background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,padding:"6px 8px"}}>
+      <select value={addType} onChange={e=>{setAddType(e.target.value);setAddItemId("");}} style={{fontSize:11,padding:"3px 6px"}}>
+        <option value="pm">PM</option>
+        <option value="gang">Gang</option>
+      </select>
+      <select value={addItemId} onChange={e=>setAddItemId(e.target.value)} style={{fontSize:11,padding:"3px 6px",minWidth:140}}>
+        <option value="">— item —</option>
+        {availableItems.map(i => <option key={i.id} value={i.id}>{i.nom}</option>)}
+      </select>
+      <input type="number" min="0" placeholder="Seuil" value={addSeuil} onChange={e=>setAddSeuil(e.target.value)} style={{fontSize:11,width:60,textAlign:"center",padding:"3px 6px"}} title="Seuil d'alerte"/>
+      <button onClick={handleAdd} disabled={!addItemId} style={{fontSize:11,padding:"4px 10px",fontWeight:700,color:addItemId?C.green:C.dim,opacity:addItemId?1:0.5}}>OK</button>
+      <button onClick={()=>setOpen(false)} style={{fontSize:11,padding:"3px 6px",color:C.muted}}>×</button>
     </div>
   );
 }
@@ -1065,11 +1008,7 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
           <input type="text" placeholder="Note libre..." value={note} onChange={e=>setNote(e.target.value)} style={{width:"100%"}}/>
         </div>
       </div>
-      {stockItems.length===0 ? (
-        <div style={{fontSize:11,color:C.muted,fontStyle:"italic",padding:"10px 0",textAlign:"center"}}>
-          Aucun item dans le stock Londres. Configure les items à suivre dans Apparts → Londres.
-        </div>
-      ) : (
+      {stockItems.length>0 && (
         <>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Items à livrer</div>
           <div style={{maxHeight:240,overflowY:"auto",borderTop:"1px solid "+C.border,borderBottom:"1px solid "+C.border,marginBottom:10}}>
@@ -1487,23 +1426,41 @@ function Main({cu,setCu,onLogout}){
   }
   async function livrerCommandeRecue(cmd){
     if(!cmd) return;
-    // Décrémenter le stock pour chaque ligne
+    // 1. Décrémenter le stock_londres (quantité par item)
+    let totalKgDecrement = 0;
     for(const ligne of (cmd.lignes||[])){
       const stock = stockLondres.find(s => s.item_id===ligne.item_id && s.item_type===ligne.item_type);
       if(stock){
-        const newQty = Math.max(0, stock.quantite - (+ligne.qte||0));
+        const qteLivree = +ligne.qte||0;
+        const newQty = Math.max(0, stock.quantite - qteLivree);
         await sb.from("stock_londres").update({quantite:newQty, updated_at:new Date().toISOString()}).eq("id", stock.id);
         setStockLondres(prev => prev.map(s => s.id===stock.id ? {...s, quantite:newQty} : s));
+        // Calculer le poids total à retrancher du stock kg de Londres
+        const item = ligne.item_type === "pm"
+          ? itemsPM.find(i => i.id === ligne.item_id)
+          : itemsG.find(i => i.id === ligne.item_id);
+        const poids = item?.poids || 0;
+        totalKgDecrement += qteLivree * poids;
       }
     }
-    // Marquer la commande comme livrée
+    // 2. Décrémenter le stock kg de l'appart Londres si on a livré du poids
+    if(totalKgDecrement > 0){
+      const londres = apparts.find(a => a.nom && a.nom.toLowerCase().trim()==="londres");
+      if(londres){
+        const newStock = Math.max(0, (+londres.stock||0) - totalKgDecrement);
+        await sb.from("apparts").update({stock:newStock}).eq("id", londres.id);
+        setApparts(prev => prev.map(a => a.id===londres.id ? {...a, stock:newStock} : a));
+      }
+    }
+    // 3. Marquer la commande comme livrée
     await sb.from("commandes_recues").update({
       status: "livree",
       livree_at: new Date().toISOString(),
       user_livraison: cu.nom
     }).eq("id", cmd.id);
     setCommandesRecues(prev => prev.map(c => c.id===cmd.id ? {...c, status:"livree", livree_at:new Date().toISOString(), user_livraison:cu.nom} : c));
-    log("commande","cmd_recue_livree",`a livré la commande pour <b>${cmd.gang_nom||"?"}</b>`);
+    const kgInfo = totalKgDecrement>0 ? ` · -${fmtKgD(totalKgDecrement)} stock` : "";
+    log("commande","cmd_recue_livree",`a livré la commande pour <b>${cmd.gang_nom||"?"}</b>${kgInfo}`);
   }
   async function delCommandeRecue(cmd){
     if(!cmd) return;
@@ -3312,27 +3269,85 @@ function Main({cu,setCu,onLogout}){
           </div>
           {!isAdmin&&<div style={{fontSize:11,color:C.muted,marginBottom:10,fontStyle:"italic"}}>💡 Tu peux modifier le coffre et le stock. Pour le reste (nom, catégorie, code, ajout), va dans Database (admin).</div>}
           <div data-mobile="apparts-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-            {sortedAp.map(a=>{
-              const isLondres = a.nom && a.nom.toLowerCase().trim()==="londres";
-              return (
-                <AppartCard
-                  key={a.id}
-                  a={a}
-                  updateAppart={updateAppart}
-                  copied={copied}
-                  setCopied={setCopied}
-                  isLondres={isLondres}
-                  stockLondres={isLondres?stockLondres:null}
-                  itemsPM={isLondres?itemsPM:null}
-                  itemsG={isLondres?itemsG:null}
-                  isAdmin={isAdmin}
-                  onAddStockItem={isLondres?addStockItem:null}
-                  onRemoveStockItem={isLondres?removeStockItem:null}
-                  onUpdateStockQty={isLondres?updateStockQty:null}
-                  onUpdateStockSeuil={isLondres?updateStockSeuil:null}
-                />
-              );
-            })}
+            {sortedAp.map(a=>(
+              <AppartCard key={a.id} a={a} updateAppart={updateAppart} copied={copied} setCopied={setCopied}/>
+            ))}
+          </div>
+
+          {/* ═══ STOCK COMMANDES (Londres) ═══ */}
+          <div style={{...card,marginTop:24,borderLeft:"3px solid "+C.amber}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:11,fontWeight:700,color:C.amber,textTransform:"uppercase",letterSpacing:"0.12em"}}>📦 Stock commandes</span>
+                <span style={{fontSize:11,color:C.dim}}>· Londres · {stockLondres.length} item{stockLondres.length>1?"s":""} suivi{stockLondres.length>1?"s":""}</span>
+              </div>
+              <LondresStockAddInline
+                stockLondres={stockLondres}
+                itemsPM={itemsPM}
+                itemsG={itemsG}
+                onAddStockItem={addStockItem}
+              />
+            </div>
+            {stockLondres.length===0 ? (
+              <div style={{fontSize:12,color:C.muted,fontStyle:"italic",padding:20,textAlign:"center"}}>
+                Aucun item suivi. Utilise le bouton "+ Item" ci-dessus pour configurer ce qui doit être stocké à Londres.
+              </div>
+            ) : (
+              <div data-mobile="stock-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:8}}>
+                {stockLondres.map(s=>{
+                  const isLow = s.quantite < s.seuil;
+                  // Trouver le poids de l'item référencé
+                  const item = s.item_type === "pm"
+                    ? itemsPM.find(i => i.id === s.item_id)
+                    : itemsG.find(i => i.id === s.item_id);
+                  const poids = item?.poids || 0;
+                  const totalKg = s.quantite * poids;
+                  return (
+                    <div key={s.id} style={{
+                      background:isLow?"rgba(223,90,68,0.06)":C.surfaceAlt,
+                      border:"1px solid "+(isLow?"rgba(223,90,68,0.3)":C.border),
+                      borderRadius:6,
+                      padding:"10px 12px"
+                    }}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                        <span style={{fontSize:13,fontWeight:600,color:isLow?C.red:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {s.item_nom}
+                        </span>
+                        <span style={{fontSize:9,padding:"1px 6px",borderRadius:3,fontWeight:600,background:s.item_type==="pm"?"rgba(127,158,209,0.15)":"rgba(227,185,74,0.15)",color:s.item_type==="pm"?C.blue:C.amber,marginLeft:6,whiteSpace:"nowrap"}}>
+                          {s.item_type==="pm"?"PM":"Gang"}
+                        </span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                        <input
+                          type="number"
+                          min="0"
+                          value={s.quantite}
+                          onChange={e=>updateStockQty(s.id, e.target.value)}
+                          style={{flex:1,fontSize:18,fontWeight:700,textAlign:"center",padding:"4px 6px",color:isLow?C.red:C.text}}
+                          title="Quantité actuelle"
+                        />
+                        <span style={{fontSize:11,color:C.dim}}>/</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={s.seuil}
+                          onChange={e=>updateStockSeuil(s.id, e.target.value)}
+                          style={{width:50,fontSize:12,textAlign:"center",padding:"4px 6px",color:C.muted}}
+                          title="Seuil d'alerte"
+                        />
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:10,color:C.dim}}>
+                        <span>
+                          {poids>0&&<>{fmtKgD(poids)}/u · <strong style={{color:C.blue}}>{fmtKgD(totalKg)}</strong></>}
+                          {poids===0&&<span style={{fontStyle:"italic"}}>poids non défini</span>}
+                        </span>
+                        {isAdmin&&<button onClick={()=>{if(window.confirm(`Retirer ${s.item_nom} du suivi ?`))removeStockItem(s.id);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
