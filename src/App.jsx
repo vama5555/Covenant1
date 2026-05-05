@@ -1915,7 +1915,7 @@ function Main({cu,setCu,onLogout}){
   // Totaux sur les transactions filtrées (Historique)
   // Items en stock bas (sous le seuil) — utilisé pour l'alerte du tableau de bord
   const stockBas = useMemo(()=>{
-    return stockLondres.filter(s => s.quantite < s.seuil);
+    return stockLondres.filter(s => (+s.quantite||0) < (+s.seuil||0));
   },[stockLondres]);
 
   const totauxH=useMemo(()=>{
@@ -3619,7 +3619,7 @@ function Main({cu,setCu,onLogout}){
             ) : (
               <div data-mobile="stock-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
                 {stockLondres.map(s=>{
-                  const isLow = s.quantite < s.seuil;
+                  const isLow = (+s.quantite||0) < (+s.seuil||0);
                   return (
                     <div key={s.id} style={{
                       display:"flex",
