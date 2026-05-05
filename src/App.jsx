@@ -630,21 +630,29 @@ function AppartCard({a,updateAppart,copied,setCopied}){
 // Bouton + popover compact pour ajouter un item au stock Londres
 function LondresStockAddInline({stockLondres,itemsPM,itemsG,onAddStockItem}){
   const [open, setOpen] = useState(false);
-  const [addType, setAddType] = useState("pm");
-  const [addItemId, setAddItemId] = useState("");
+  const [addKey, setAddKey] = useState("");
   const [addSeuil, setAddSeuil] = useState("5");
 
+  // Fusion des items PM et Gang en une seule liste, triée par nom
+  // La clé interne "type:id" permet de retrouver le type au moment de l'ajout
   const availableItems = useMemo(()=>{
     const usedKeys = new Set(stockLondres.map(s => s.item_type+":"+s.item_id));
-    const list = addType==="pm" ? itemsPM : itemsG;
-    return list.filter(i => !usedKeys.has(addType+":"+i.id) && i.visible !== false);
-  },[stockLondres, itemsPM, itemsG, addType]);
+    const all = [
+      ...itemsPM.filter(i => i.visible !== false).map(i => ({...i, _type:"pm"})),
+      ...itemsG.filter(i => i.visible !== false).map(i => ({...i, _type:"gang"})),
+    ];
+    return all
+      .filter(i => !usedKeys.has(i._type+":"+i.id))
+      .sort((a,b) => (a.nom||"").localeCompare(b.nom||"","fr",{sensitivity:"base"}));
+  },[stockLondres, itemsPM, itemsG]);
 
   function handleAdd(){
-    const item = availableItems.find(i => i.id === addItemId);
+    if(!addKey) return;
+    const [type, idStr] = addKey.split(":");
+    const item = availableItems.find(i => i._type===type && String(i.id)===idStr);
     if(!item) return;
-    onAddStockItem(item, addType, +addSeuil||5);
-    setAddItemId("");
+    onAddStockItem(item, type, +addSeuil||5);
+    setAddKey("");
     setAddSeuil("5");
   }
 
@@ -656,18 +664,22 @@ function LondresStockAddInline({stockLondres,itemsPM,itemsG,onAddStockItem}){
     );
   }
   return (
-    <div style={{display:"flex",alignItems:"center",gap:6,background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,padding:"6px 8px"}}>
-      <select value={addType} onChange={e=>{setAddType(e.target.value);setAddItemId("");}} style={{fontSize:11,padding:"3px 6px"}}>
-        <option value="pm">PM</option>
-        <option value="gang">Gang</option>
-      </select>
-      <select value={addItemId} onChange={e=>setAddItemId(e.target.value)} style={{fontSize:11,padding:"3px 6px",minWidth:140}}>
-        <option value="">— item —</option>
-        {availableItems.map(i => <option key={i.id} value={i.id}>{i.nom}</option>)}
-      </select>
-      <input type="number" min="0" placeholder="Seuil" value={addSeuil} onChange={e=>setAddSeuil(e.target.value)} style={{fontSize:11,width:60,textAlign:"center",padding:"3px 6px"}} title="Seuil d'alerte"/>
-      <button onClick={handleAdd} disabled={!addItemId} style={{fontSize:11,padding:"4px 10px",fontWeight:700,color:addItemId?C.green:C.dim,opacity:addItemId?1:0.5}}>OK</button>
-      <button onClick={()=>setOpen(false)} style={{fontSize:11,padding:"3px 6px",color:C.muted}}>×</button>
+    <div style={{display:"flex",alignItems:"flex-end",gap:6,background:C.surfaceAlt,border:"1px solid "+C.border,borderRadius:6,padding:"6px 8px"}}>
+      <div style={{display:"flex",flexDirection:"column"}}>
+        <div style={S.lbl}>Item</div>
+        <select value={addKey} onChange={e=>setAddKey(e.target.value)} style={{fontSize:11,padding:"3px 6px",minWidth:160}}>
+          <option value="">— item —</option>
+          {availableItems.map(i => (
+            <option key={i._type+":"+i.id} value={i._type+":"+i.id}>{i.nom}</option>
+          ))}
+        </select>
+      </div>
+      <div style={{display:"flex",flexDirection:"column"}}>
+        <div style={S.lbl}>Seuil</div>
+        <input type="number" min="0" placeholder="Seuil" value={addSeuil} onChange={e=>setAddSeuil(e.target.value)} style={{fontSize:11,width:60,textAlign:"center",padding:"3px 6px"}} title="Seuil d'alerte"/>
+      </div>
+      <button onClick={handleAdd} disabled={!addKey} style={{fontSize:11,padding:"4px 10px",fontWeight:700,color:addKey?C.green:C.dim,opacity:addKey?1:0.5}}>OK</button>
+      <button onClick={()=>{setOpen(false);setAddKey("");setAddSeuil("5");}} style={{fontSize:11,padding:"3px 6px",color:C.muted}}>×</button>
     </div>
   );
 }
@@ -3309,32 +3321,34 @@ function Main({cu,setCu,onLogout}){
                       borderRadius:6,
                       padding:"10px 12px"
                     }}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                        <span style={{fontSize:13,fontWeight:600,color:isLow?C.red:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      <div style={{marginBottom:6}}>
+                        <span style={{fontSize:13,fontWeight:600,color:isLow?C.red:C.text,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                           {s.item_nom}
                         </span>
-                        <span style={{fontSize:9,padding:"1px 6px",borderRadius:3,fontWeight:600,background:s.item_type==="pm"?"rgba(127,158,209,0.15)":"rgba(227,185,74,0.15)",color:s.item_type==="pm"?C.blue:C.amber,marginLeft:6,whiteSpace:"nowrap"}}>
-                          {s.item_type==="pm"?"PM":"Gang"}
-                        </span>
                       </div>
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-                        <input
-                          type="number"
-                          min="0"
-                          value={s.quantite}
-                          onChange={e=>updateStockQty(s.id, e.target.value)}
-                          style={{flex:1,fontSize:18,fontWeight:700,textAlign:"center",padding:"4px 6px",color:isLow?C.red:C.text}}
-                          title="Quantité actuelle"
-                        />
-                        <span style={{fontSize:11,color:C.dim}}>/</span>
-                        <input
-                          type="number"
-                          min="0"
-                          value={s.seuil}
-                          onChange={e=>updateStockSeuil(s.id, e.target.value)}
-                          style={{width:50,fontSize:12,textAlign:"center",padding:"4px 6px",color:C.muted}}
-                          title="Seuil d'alerte"
-                        />
+                      <div style={{display:"flex",alignItems:"flex-end",gap:6,marginBottom:6}}>
+                        <div style={{flex:1}}>
+                          <div style={{...S.lbl,textAlign:"center"}}>Stock</div>
+                          <input
+                            type="number"
+                            min="0"
+                            value={s.quantite}
+                            onChange={e=>updateStockQty(s.id, e.target.value)}
+                            style={{width:"100%",fontSize:18,fontWeight:700,textAlign:"center",padding:"4px 6px",color:isLow?C.red:C.text}}
+                            title="Quantité actuelle"
+                          />
+                        </div>
+                        <div style={{width:60}}>
+                          <div style={{...S.lbl,textAlign:"center"}}>Seuil</div>
+                          <input
+                            type="number"
+                            min="0"
+                            value={s.seuil}
+                            onChange={e=>updateStockSeuil(s.id, e.target.value)}
+                            style={{width:"100%",fontSize:12,textAlign:"center",padding:"4px 6px",color:C.muted}}
+                            title="Seuil d'alerte"
+                          />
+                        </div>
                       </div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:10,color:C.dim}}>
                         <span>
