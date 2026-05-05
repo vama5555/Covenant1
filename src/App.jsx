@@ -63,6 +63,30 @@ const C={
 };
 const card={background:C.surface,border:"1px solid "+C.border,borderRadius:8,padding:"16px 18px"};
 const S={card,inp:{width:"100%"},lbl:{fontSize:11,color:C.muted,marginBottom:3,fontWeight:500},sec:{fontSize:10,fontWeight:700,color:C.muted,margin:"0 0 14px",textTransform:"uppercase",letterSpacing:"0.12em"},row:{display:"flex",alignItems:"center",gap:8,marginBottom:8}};
+
+// ── MoneyInput : input texte avec séparateur de milliers (fr-FR) ──
+// Stocke et renvoie une string de chiffres bruts (compatible avec +value comme un type=number).
+// Props identiques à un <input> standard : value, onChange, placeholder, style, onKeyDown, etc.
+function MoneyInput({value, onChange, placeholder, style, onKeyDown, ...rest}){
+  const raw = String(value ?? "");
+  const display = raw === "" ? "" : (+raw).toLocaleString("fr-FR");
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      placeholder={placeholder}
+      value={display}
+      onChange={e=>{
+        const cleaned = e.target.value.replace(/[^\d]/g,"");
+        // On simule l'event d'un input number en passant la valeur nettoyée
+        if(onChange) onChange({...e, target:{...e.target, value:cleaned}});
+      }}
+      onKeyDown={onKeyDown}
+      style={style}
+      {...rest}
+    />
+  );
+}
 const G=`*{box-sizing:border-box;}
 @keyframes cv-spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
 @keyframes cv-pulse{0%,100%{opacity:0.4;}50%{opacity:1;}}
@@ -603,7 +627,7 @@ function AppartCard({a,updateAppart,copied,setCopied}){
             {coffreStatus==="saved"&&<span style={{fontSize:9,color:C.green,fontWeight:600}}>✓</span>}
             {coffreDirty&&!coffreStatus&&<span style={{fontSize:9,color:C.amber,fontWeight:600}}>•</span>}
           </div>
-          <input type="number" value={coffre}
+          <MoneyInput value={coffre}
             onChange={e=>{setCoffre(e.target.value);setCoffreDirty(true);}}
             onBlur={saveCoffre}
             onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
@@ -1023,8 +1047,13 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
           </select>
         </div>
         <div>
-          <div style={S.lbl}>Montant payé ($) <span style={{color:C.red}}>*</span></div>
-          <input type="number" min="0" placeholder="0" value={montant} onChange={e=>setMontant(e.target.value)} style={{width:"100%"}}/>
+          <div style={S.lbl}>Montant payé ($) <span style={{color:C.red,fontSize:9,marginLeft:4,fontWeight:600}}>SALE</span> <span style={{color:C.red}}>*</span></div>
+          <MoneyInput
+            value={montant}
+            onChange={e=>setMontant(e.target.value)}
+            placeholder="0"
+            style={{width:"100%",color:+montant>0?C.red:undefined,fontWeight:+montant>0?600:400}}
+          />
         </div>
       </div>
       {stockItems.length>0 && (
@@ -1063,7 +1092,7 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
         <div style={{fontSize:11,color:C.muted,display:"flex",gap:14,flexWrap:"wrap"}}>
           {totalQte>0&&<span>Total : <strong style={{color:C.text}}>{totalQte}</strong> item{totalQte>1?"s":""}</span>}
           {totalKg>0&&<span>Poids : <strong style={{color:C.blue}}>{fmtKgD(totalKg)}</strong></span>}
-          {+montant>0&&<span>Payé : <strong style={{color:C.green}}>{fmt(+montant)}</strong></span>}
+          {+montant>0&&<span>Payé <span style={{color:C.red,fontSize:9,fontWeight:700}}>(sale)</span> : <strong style={{color:C.red}}>{fmt(+montant)}</strong></span>}
         </div>
         <button onClick={submit} disabled={!canSubmit} style={{padding:"8px 18px",fontWeight:700,background:canSubmit?C.green:"#3a3a3a",color:canSubmit?"#1a1a1a":C.muted,border:"none",borderRadius:6,cursor:canSubmit?"pointer":"not-allowed",opacity:canSubmit?1:0.6}}>
           + Créer commande
@@ -1111,7 +1140,7 @@ const AddCmdPasseeForm = memo(function AddCmdPasseeForm({onAdd}){
         </div>
         <div>
           <div style={S.lbl}>Montant ($) <span style={{color:C.red}}>*</span></div>
-          <input type="number" min="1" placeholder="ex: 50000" value={montant} onChange={e=>setMontant(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} style={{width:"100%"}}/>
+          <MoneyInput placeholder="ex: 50 000" value={montant} onChange={e=>setMontant(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} style={{width:"100%"}}/>
         </div>
       </div>
       <div style={{marginBottom:10}}>
@@ -2693,7 +2722,7 @@ function Main({cu,setCu,onLogout}){
                 <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"end"}}>
                   <div>
                     <div style={S.lbl}>Montant à blanchir ($)</div>
-                    <input type="number" min="1" placeholder="ex: 75000" value={blAmount} onChange={e=>setBlAmount(e.target.value)} onKeyDown={e=>e.key==="Enter"&&startBlanch()} style={{width:"100%"}}/>
+                    <MoneyInput placeholder="ex: 75 000" value={blAmount} onChange={e=>setBlAmount(e.target.value)} onKeyDown={e=>e.key==="Enter"&&startBlanch()} style={{width:"100%"}}/>
                   </div>
                   <button onClick={startBlanch} disabled={blPreviewAmount<=0} style={{padding:"10px 26px",fontWeight:700,fontSize:13,letterSpacing:"0.05em",textTransform:"uppercase",background:blPreviewAmount>0?C.amber:"#3a3a3a",color:blPreviewAmount>0?"#1a1a1a":C.muted,border:"none",borderRadius:6,transition:"background .2s"}} onMouseEnter={e=>{if(blPreviewAmount>0)e.currentTarget.style.background=C.amberBright;}} onMouseLeave={e=>{if(blPreviewAmount>0)e.currentTarget.style.background=C.amber;}}>Démarrer</button>
                 </div>
@@ -2800,7 +2829,7 @@ function Main({cu,setCu,onLogout}){
                     <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"end"}}>
                       <div>
                         <div style={S.lbl}>Valeur de la caisse ($)</div>
-                        <input type="number" min="1" placeholder="ex: 45000" value={enAmount} onChange={e=>setEnAmount(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&enPreviewAmount>0){startEntrepot(enAmount);setEnAmount("");}}} style={{width:"100%"}}/>
+                        <MoneyInput placeholder="ex: 45 000" value={enAmount} onChange={e=>setEnAmount(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&enPreviewAmount>0){startEntrepot(enAmount);setEnAmount("");}}} style={{width:"100%"}}/>
                       </div>
                       <button onClick={()=>{startEntrepot(enAmount);setEnAmount("");}} disabled={enPreviewAmount<=0} style={{padding:"10px 26px",fontWeight:700,fontSize:13,letterSpacing:"0.05em",textTransform:"uppercase",background:enPreviewAmount>0?C.amber:"#3a3a3a",color:enPreviewAmount>0?"#1a1a1a":C.muted,border:"none",borderRadius:6,transition:"background .2s"}} onMouseEnter={e=>{if(enPreviewAmount>0)e.currentTarget.style.background=C.amberBright;}} onMouseLeave={e=>{if(enPreviewAmount>0)e.currentTarget.style.background=C.amber;}}>Déposer</button>
                     </div>
@@ -2895,7 +2924,7 @@ function Main({cu,setCu,onLogout}){
               {tx.dest==="pm"&&(
                 <div>
                   <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>Argent sale · 40%</div>
-                  <input type="number" min="0" placeholder="0$" style={{width:"100%"}} value={tx.argentSale} onChange={e=>setTx(f=>({...f,argentSale:e.target.value}))}/>
+                  <MoneyInput placeholder="0" style={{width:"100%"}} value={tx.argentSale} onChange={e=>setTx(f=>({...f,argentSale:e.target.value}))}/>
                 </div>
               )}
             </div>
@@ -3184,7 +3213,7 @@ function Main({cu,setCu,onLogout}){
                         <span style={{fontSize:10,padding:"1px 7px",borderRadius:4,fontWeight:600,background:"rgba(212,146,10,0.15)",color:C.amber,marginLeft:8}}>En attente</span>
                       </div>
                       <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                        {+cmd.montant>0&&<span style={{fontSize:14,fontWeight:700,color:C.green}}>{fmt(cmd.montant)}</span>}
+                        {+cmd.montant>0&&<span style={{fontSize:14,fontWeight:700,color:C.red}}>{fmt(cmd.montant)} <span style={{fontSize:9,color:C.red,fontWeight:600,letterSpacing:"0.04em"}}>SALE</span></span>}
                         <span style={{fontSize:10,color:C.dim}}>{fmtDateTime(new Date(cmd.created_at))}</span>
                       </div>
                     </div>
@@ -3216,7 +3245,7 @@ function Main({cu,setCu,onLogout}){
                         {(cmd.lignes||[]).map(l=>`${l.qte}×${l.item_nom}`).join(" · ")}
                       </div>
                     </div>
-                    {+cmd.montant>0&&<span style={{fontSize:13,fontWeight:700,color:C.green,whiteSpace:"nowrap"}}>{fmt(cmd.montant)}</span>}
+                    {+cmd.montant>0&&<span style={{fontSize:13,fontWeight:700,color:C.red,whiteSpace:"nowrap"}}>{fmt(cmd.montant)}</span>}
                     <span style={{fontSize:10,color:C.dim,whiteSpace:"nowrap"}}>{cmd.livree_at?fmtDateTime(new Date(cmd.livree_at)):""}</span>
                     {isAdmin&&<button onClick={()=>{if(window.confirm("Supprimer cette commande de l'historique ?"))delCommandeRecue(cmd);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
                   </div>
@@ -3425,7 +3454,7 @@ function Main({cu,setCu,onLogout}){
                           <div><div style={S.lbl}>Catégorie</div><select style={S.inp} value={eApV.categorie||"recel"} onChange={e=>setEApV(v=>({...v,categorie:e.target.value}))}>{APPART_CATS.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</select></div>
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:10}}>
-                          <div><div style={S.lbl}>Max coffre ($)</div><input type="number" style={S.inp} value={eApV.max_coffre||""} onChange={e=>setEApV(v=>({...v,max_coffre:e.target.value}))}/></div>
+                          <div><div style={S.lbl}>Max coffre ($)</div><MoneyInput style={S.inp} value={eApV.max_coffre||""} onChange={e=>setEApV(v=>({...v,max_coffre:e.target.value}))}/></div>
                           <div><div style={S.lbl}>Max stock (Kg)</div><input type="number" style={S.inp} value={eApV.max_stock||""} onChange={e=>setEApV(v=>({...v,max_stock:e.target.value}))}/></div>
                           <div><div style={S.lbl}>Code appart</div><input type="text" style={S.inp} value={eApV.code||""} onChange={e=>setEApV(v=>({...v,code:e.target.value}))} placeholder="optionnel"/></div>
                         </div>
@@ -3462,7 +3491,7 @@ function Main({cu,setCu,onLogout}){
                 <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr 1fr auto",gap:6,alignItems:"end",marginTop:6}}>
                   <input style={S.inp} placeholder="Nom" value={nAp.nom} onChange={e=>setNAp(f=>({...f,nom:e.target.value}))}/>
                   <select style={S.inp} value={nAp.categorie} onChange={e=>setNAp(f=>({...f,categorie:e.target.value}))}>{APPART_CATS.map(c=><option key={c.id} value={c.id}>{c.label}</option>)}</select>
-                  <input type="number" style={S.inp} placeholder="Max coffre" value={nAp.max_coffre} onChange={e=>setNAp(f=>({...f,max_coffre:e.target.value}))}/>
+                  <MoneyInput style={S.inp} placeholder="Max coffre" value={nAp.max_coffre} onChange={e=>setNAp(f=>({...f,max_coffre:e.target.value}))}/>
                   <input type="number" style={S.inp} placeholder="Max stock" value={nAp.max_stock} onChange={e=>setNAp(f=>({...f,max_stock:e.target.value}))}/>
                   <input style={S.inp} placeholder="Code" value={nAp.code} onChange={e=>setNAp(f=>({...f,code:e.target.value}))}/>
                   <button onClick={addAppart} style={{fontWeight:700,color:C.green}}>+</button>
@@ -3493,7 +3522,7 @@ function Main({cu,setCu,onLogout}){
               )}
               <div style={{display:"flex",gap:8,alignItems:"end",borderTop:"1px solid "+C.border,paddingTop:10,marginTop:4}}>
                 <div style={{flex:1}}><div style={S.lbl}>Nom</div><input style={S.inp} value={nBM.nom} onChange={e=>setNBM(f=>({...f,nom:e.target.value}))}/></div>
-                <div><div style={S.lbl}>Solde ($)</div><input type="number" style={{width:90}} value={nBM.solde} onChange={e=>setNBM(f=>({...f,solde:e.target.value}))}/></div>
+                <div><div style={S.lbl}>Solde ($)</div><MoneyInput style={{width:90}} value={nBM.solde} onChange={e=>setNBM(f=>({...f,solde:e.target.value}))}/></div>
                 <button onClick={async()=>{if(!nBM.nom)return;const{data}=await sb.from("membres_comptes").insert({nom:nBM.nom,solde:+nBM.solde||0}).select().single();if(data){setMembers(p=>[...p,data]);log("money","balance_create",`a créé le compte <b>${data.nom}</b> (solde initial : ${fmt(data.solde)})`);}setNBM({nom:"",solde:""});}} style={{fontWeight:700}}>+</button>
               </div>
             </div>
@@ -3523,7 +3552,7 @@ function Main({cu,setCu,onLogout}){
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   <div>
                     <div style={S.lbl}>Seuil d'alerte solde compte ($)</div>
-                    <input type="number" min="0" style={S.inp} value={thresholdInput} onChange={e=>setThresholdInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveThreshold()}/>
+                    <MoneyInput style={S.inp} value={thresholdInput} onChange={e=>setThresholdInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveThreshold()}/>
                     <div style={{fontSize:11,color:C.muted,marginTop:5}}>En-dessous de ce seuil, le compte membre s'affiche en rouge sur le tableau de bord.</div>
                   </div>
                   <button onClick={saveThreshold} style={{fontWeight:700,background:C.amber,color:"#1a1a1a",border:"none",padding:"8px 14px",marginTop:4}}>Sauvegarder</button>
@@ -4024,7 +4053,8 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Bénéfice net estimé</div>
-          <div style={{fontSize:20,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(Math.round(totBrut*0.8)-totPaye+totEntrepots+totCmdRecues)}</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(Math.round((totBrut+totEntrepots+totCmdRecues)*0.8)-totPaye)}</div>
+          <div style={{fontSize:9,color:C.dim,marginTop:4}}>après blanchiment estimé</div>
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Total blanchi</div>
@@ -4032,21 +4062,21 @@ function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepot
         </div>
       </div>
 
-      {/* ── Détail des revenus annexes (entrepôts + commandes livrées) ── */}
+      {/* ── Détail des revenus annexes (entrepôts + commandes livrées) — argent sale ── */}
       <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
-            <span>📦 Entrepôts récupérés</span>
+            <span>📦 Entrepôts récupérés <span style={{color:C.red,fontSize:9,marginLeft:4}}>SALE</span></span>
             <span style={{color:C.dim,letterSpacing:"normal",textTransform:"none"}}>{entrepotsInPeriod.length}</span>
           </div>
-          <div style={{fontSize:18,fontWeight:600,color:C.amber,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totEntrepots)}</div>
+          <div style={{fontSize:18,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totEntrepots)}</div>
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
-            <span>🎯 Commandes livrées</span>
+            <span>🎯 Commandes livrées <span style={{color:C.red,fontSize:9,marginLeft:4}}>SALE</span></span>
             <span style={{color:C.dim,letterSpacing:"normal",textTransform:"none"}}>{cmdLivreesInPeriod.length}</span>
           </div>
-          <div style={{fontSize:18,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totCmdRecues)}</div>
+          <div style={{fontSize:18,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totCmdRecues)}</div>
         </div>
       </div>
 
