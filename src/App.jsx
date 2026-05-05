@@ -129,24 +129,26 @@ function StockRow({stock, isAdmin, onUpdateQty, onUpdateSeuil, onRemove}){
         {stock.item_nom}
       </span>
       <input
-        type="number"
-        min="0"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
         value={qtyDraft}
-        onChange={e=>setQtyDraft(e.target.value)}
+        onChange={e=>setQtyDraft(e.target.value.replace(/[^\d]/g,""))}
         onBlur={commitQty}
         onKeyDown={e=>{ if(e.key==="Enter") e.target.blur(); }}
-        style={{width:54,fontSize:14,fontWeight:700,textAlign:"center",padding:"3px 4px",color:isLow?C.red:C.text}}
+        style={{width:60,fontSize:14,fontWeight:700,textAlign:"center",padding:"3px 4px",color:isLow?C.red:C.text}}
         title="Stock actuel"
       />
       <span style={{fontSize:12,color:C.dim}}>/</span>
       <input
-        type="number"
-        min="0"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
         value={seuilDraft}
-        onChange={e=>setSeuilDraft(e.target.value)}
+        onChange={e=>setSeuilDraft(e.target.value.replace(/[^\d]/g,""))}
         onBlur={commitSeuil}
         onKeyDown={e=>{ if(e.key==="Enter") e.target.blur(); }}
-        style={{width:46,fontSize:12,textAlign:"center",padding:"3px 4px",color:C.muted}}
+        style={{width:54,fontSize:12,textAlign:"center",padding:"3px 4px",color:C.muted}}
         title="Seuil d'alerte"
       />
       {isAdmin && (
@@ -168,6 +170,10 @@ button{background:#2a2a2a;border:1px solid #3a3a3a;border-radius:6px;padding:5px
 button:hover{background:#333;border-color:#4a4a4a;}
 button:active{transform:scale(0.97);}
 div,span,p,h1,h2,h3,label{color:inherit;}
+/* Cacher les flèches up/down des input[type=number] */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none!important;margin:0!important;}
+input[type=number]{-moz-appearance:textfield!important;}
 /* ── Responsive mobile (≤ 700px) ── */
 @media (max-width:700px){
   /* Padding réduit du conteneur principal */
