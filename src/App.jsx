@@ -1712,9 +1712,9 @@ function Main({cu,setCu,onLogout}){
     return <>
       <div style={{display:"grid",gridTemplateColumns:gridCols,gap:8,marginBottom:8}}>
         <span style={S.lbl}>Nom</span>
-        <span style={S.lbl}>% objets</span>
-        <span style={S.lbl}>$/liasse</span>
-        {isPM&&<span style={S.lbl}>$ ATM</span>}
+        <span style={{...S.lbl,textAlign:"right"}}>% objets</span>
+        <span style={{...S.lbl,textAlign:"right"}}>$/liasse</span>
+        {isPM&&<span style={{...S.lbl,textAlign:"right"}}>$ ATM</span>}
         <span/>
       </div>
       {visible.map(c=>(
@@ -1723,9 +1723,9 @@ function Main({cu,setCu,onLogout}){
             ?<EditCatForm cat={c} onSave={save} onCancel={()=>setEId(null)} showPrixFixe={isPM}/>
             :<>
               <span style={{fontSize:14,color:C.text}}>{c.nom}</span>
-              <span style={{fontSize:13,color:C.muted}}>{c.pct_objets}%</span>
-              <span style={{fontSize:13,color:C.muted}}>{c.taux_liasse}$</span>
-              {isPM&&<span style={{fontSize:13,color:c.prix_fixe?C.amber:C.dim}}>{c.prix_fixe?fmt(c.prix_fixe):"—"}</span>}
+              <span style={{fontSize:13,color:C.muted,textAlign:"right"}}>{c.pct_objets}%</span>
+              <span style={{fontSize:13,color:C.muted,textAlign:"right"}}>{c.taux_liasse}$</span>
+              {isPM&&<span style={{fontSize:13,color:c.prix_fixe?C.amber:C.dim,textAlign:"right"}}>{c.prix_fixe?fmt(c.prix_fixe):"—"}</span>}
               {isAdmin&&<div style={{display:"flex",gap:4}}><button onClick={()=>setEId(c.id)}>Mod.</button><button onClick={()=>del(c.id)} style={{color:C.red}}>×</button></div>}
             </>
           }
@@ -1797,10 +1797,6 @@ function Main({cu,setCu,onLogout}){
       : pms;
     const visible = showAll.pms ? filteredPMs : filteredPMs.slice(0,PREVIEW);
     return <>
-      <div style={{display:"flex",justifyContent:"flex-end",gap:6,marginBottom:10}}>
-        <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"4px 10px"}}>↓ Export CSV</button>
-        {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"4px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700}}>↑ Importer CSV</button>}
-      </div>
       {searchLower&&filteredPMs.length===0&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic",padding:"10px 0",textAlign:"center"}}>Aucune PM trouvée pour "{pmSearch}"</div>}
       {searchLower&&filteredPMs.length>0&&<div style={{fontSize:11,color:C.dim,marginBottom:6}}>{filteredPMs.length} résultat{filteredPMs.length>1?"s":""}</div>}
       {visible.map(p=>{
@@ -2789,9 +2785,13 @@ function Main({cu,setCu,onLogout}){
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           {/* Ligne 1 : Petites mains (pleine largeur, en premier) */}
           <div style={card}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:14}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:14,flexWrap:"wrap"}}>
               <div style={{...S.sec,margin:0,flexShrink:0}}>Petites mains</div>
               <PMSearchInput initialValue={pmSearch} onChange={setPMSearch}/>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <button onClick={()=>exportCSV("pms")} style={{fontSize:11,padding:"6px 10px",whiteSpace:"nowrap"}}>↓ Export CSV</button>
+                {isAdmin&&<button onClick={()=>triggerImport("pms")} style={{fontSize:11,padding:"6px 10px",background:C.amber,color:"#1a1a1a",border:"none",fontWeight:700,whiteSpace:"nowrap"}}>↑ Importer CSV</button>}
+              </div>
             </div>
             <PMList/>
           </div>
