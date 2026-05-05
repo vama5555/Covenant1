@@ -112,8 +112,8 @@ div,span,p,h1,h2,h3,label{color:inherit;}
   /* Apparts vue grille : 1 colonne */
   /* Apparts vue grille : 3 colonnes desktop, 2 sur tablette, 1 sur mobile */
   [data-mobile="apparts-grid"]{grid-template-columns:1fr 1fr!important;}
-  /* Stock commandes : 2 colonnes desktop → 1 colonne mobile (inputs trop serrés sinon) */
-  [data-mobile="stock-grid"]{grid-template-columns:1fr!important;}
+  /* Stock commandes : 3 colonnes desktop → 2 sur tablette → 1 sur mobile (cf. règle 420px) */
+  [data-mobile="stock-grid"]{grid-template-columns:1fr 1fr!important;}
   /* Bigbrother filtres : 2x2 puis wrap */
   [data-mobile="bb-filters"]{grid-template-columns:1fr 1fr!important;gap:6px!important;}
   [data-mobile="bb-filters"]>div>div{font-size:9px!important;margin-bottom:2px!important;}
@@ -127,7 +127,7 @@ div,span,p,h1,h2,h3,label{color:inherit;}
 }
 @media (max-width:420px){
   /* Très petits écrans : tout en 1 colonne, sauf bb-filters qui reste en 2x2 */
-  [data-mobile="grid-4"],[data-mobile="grid-3"],[data-mobile="grid-2"],[data-mobile="tx-form-top"],[data-mobile="apparts-grid"]{grid-template-columns:1fr!important;}
+  [data-mobile="grid-4"],[data-mobile="grid-3"],[data-mobile="grid-2"],[data-mobile="tx-form-top"],[data-mobile="apparts-grid"],[data-mobile="stock-grid"]{grid-template-columns:1fr!important;}
   [data-mobile="stats-grid"]{grid-template-columns:1fr!important;}
   [data-mobile="members-grid"]{grid-template-columns:1fr!important;}
 }`;
@@ -970,7 +970,7 @@ function EditItemForm({item,onSave,onCancel,isPM}){
 // Formulaire d'ajout d'une commande reçue (gang + multi-items + note)
 const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, stockLondres, onAdd}){
   const [gangId, setGangId] = useState("");
-  const [note, setNote] = useState("");
+  const [montant, setMontant] = useState("");
   const [qtes, setQtes] = useState({}); // {stockId: qte}
   const onAddRef = useRef(onAdd);
   useEffect(()=>{onAddRef.current = onAdd;});
@@ -984,7 +984,12 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
   }).filter(s => s.item);
 
   const totalQte = Object.values(qtes).reduce((a,b)=>a+(+b||0), 0);
-  const canSubmit = !!(gangId && totalQte > 0);
+  // Poids total = somme(qte × poids unitaire)
+  const totalKg = stockItems.reduce((sum, s) => {
+    const q = +qtes[s.id]||0;
+    return sum + q * (+s.item?.poids||0);
+  }, 0);
+  const canSubmit = !!(gangId && totalQte > 0 && +montant > 0);
 
   async function submit(){
     if(!canSubmit) return;
@@ -1001,9 +1006,9 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
       gang_id: gangId,
       gang_nom: gang?.nom || "?",
       lignes: lignes,
-      note: note || null
+      montant: +montant||0
     });
-    setGangId(""); setNote(""); setQtes({});
+    setGangId(""); setMontant(""); setQtes({});
   }
 
   return (
@@ -1018,35 +1023,48 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
           </select>
         </div>
         <div>
-          <div style={S.lbl}>Note <span style={{color:C.dim,fontWeight:400}}>(optionnel)</span></div>
-          <input type="text" placeholder="Note libre..." value={note} onChange={e=>setNote(e.target.value)} style={{width:"100%"}}/>
+          <div style={S.lbl}>Montant payé ($) <span style={{color:C.red}}>*</span></div>
+          <input type="number" min="0" placeholder="0" value={montant} onChange={e=>setMontant(e.target.value)} style={{width:"100%"}}/>
         </div>
       </div>
       {stockItems.length>0 && (
         <>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Items à livrer</div>
           <div style={{maxHeight:240,overflowY:"auto",borderTop:"1px solid "+C.border,borderBottom:"1px solid "+C.border,marginBottom:10}}>
-            {stockItems.map(s => (
-              <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
-                <span style={{flex:1,fontSize:13,color:C.text}}>
-                  {s.item_nom}
-                  <span style={{fontSize:10,color:C.muted,marginLeft:6}}>({s.item_type==="pm"?"PM":"Gang"} · stock : {s.quantite})</span>
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={qtes[s.id]||""}
-                  onChange={e=>setQtes(q => ({...q, [s.id]: e.target.value}))}
-                  style={{width:72,textAlign:"center"}}
-                />
-              </div>
-            ))}
+            {stockItems.map(s => {
+              const poids = +s.item?.poids||0;
+              const qte = +qtes[s.id]||0;
+              const ligneKg = qte * poids;
+              return (
+                <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
+                  <span style={{flex:1,fontSize:13,color:C.text,minWidth:0}}>
+                    {s.item_nom}
+                    <span style={{fontSize:10,color:C.muted,marginLeft:6}}>
+                      stock : {s.quantite}
+                      {poids>0&&<> · {fmtKgD(poids)}/u</>}
+                    </span>
+                  </span>
+                  {ligneKg>0&&<span style={{fontSize:11,color:C.blue,fontWeight:600,whiteSpace:"nowrap"}}>{fmtKgD(ligneKg)}</span>}
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={qtes[s.id]||""}
+                    onChange={e=>setQtes(q => ({...q, [s.id]: e.target.value}))}
+                    style={{width:72,textAlign:"center"}}
+                  />
+                </div>
+              );
+            })}
           </div>
         </>
       )}
-      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10}}>
-        {totalQte>0 && <span style={{fontSize:11,color:C.muted}}>Total : <strong style={{color:C.text}}>{totalQte}</strong> item{totalQte>1?"s":""}</span>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <div style={{fontSize:11,color:C.muted,display:"flex",gap:14,flexWrap:"wrap"}}>
+          {totalQte>0&&<span>Total : <strong style={{color:C.text}}>{totalQte}</strong> item{totalQte>1?"s":""}</span>}
+          {totalKg>0&&<span>Poids : <strong style={{color:C.blue}}>{fmtKgD(totalKg)}</strong></span>}
+          {+montant>0&&<span>Payé : <strong style={{color:C.green}}>{fmt(+montant)}</strong></span>}
+        </div>
         <button onClick={submit} disabled={!canSubmit} style={{padding:"8px 18px",fontWeight:700,background:canSubmit?C.green:"#3a3a3a",color:canSubmit?"#1a1a1a":C.muted,border:"none",borderRadius:6,cursor:canSubmit?"pointer":"not-allowed",opacity:canSubmit?1:0.6}}>
           + Créer commande
         </button>
@@ -1423,19 +1441,19 @@ function Main({cu,setCu,onLogout}){
   }
 
   // ── Gestion Commandes Reçues ──
-  async function createCommandeRecue({gang_id, gang_nom, lignes, note}){
+  async function createCommandeRecue({gang_id, gang_nom, lignes, montant}){
     const {data} = await sb.from("commandes_recues").insert({
       gang_id: gang_id||null,
       gang_nom: gang_nom||null,
       lignes: lignes||[],
       status: "en_attente",
-      note: note||null,
+      montant: +montant||0,
       user_creation: cu.nom
     }).select().single();
     if(data){
       setCommandesRecues(prev => [data, ...prev]);
       const totalQte = (lignes||[]).reduce((s,l)=>s+(+l.qte||0),0);
-      log("commande","cmd_recue_create",`a créé une commande reçue pour <b>${gang_nom||"?"}</b> · ${totalQte} item${totalQte>1?"s":""}`);
+      log("commande","cmd_recue_create",`a créé une commande reçue pour <b>${gang_nom||"?"}</b> · ${totalQte} item${totalQte>1?"s":""} · <b>${fmt(+montant||0)}</b>`);
     }
   }
   async function livrerCommandeRecue(cmd){
@@ -3160,17 +3178,19 @@ function Main({cu,setCu,onLogout}){
                 const totalQte = (cmd.lignes||[]).reduce((s,l)=>s+(+l.qte||0),0);
                 return (
                   <div key={cmd.id} style={{...card,marginBottom:8,borderLeft:"3px solid "+C.amber,padding:"10px 14px"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8,flexWrap:"wrap"}}>
                       <div style={{fontSize:13,fontWeight:600,color:C.text}}>
                         🎯 {cmd.gang_nom||"?"}
                         <span style={{fontSize:10,padding:"1px 7px",borderRadius:4,fontWeight:600,background:"rgba(212,146,10,0.15)",color:C.amber,marginLeft:8}}>En attente</span>
                       </div>
-                      <span style={{fontSize:10,color:C.dim}}>{fmtDateTime(new Date(cmd.created_at))}</span>
+                      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                        {+cmd.montant>0&&<span style={{fontSize:14,fontWeight:700,color:C.green}}>{fmt(cmd.montant)}</span>}
+                        <span style={{fontSize:10,color:C.dim}}>{fmtDateTime(new Date(cmd.created_at))}</span>
+                      </div>
                     </div>
                     <div style={{fontSize:11,color:C.muted,marginBottom:8}}>
                       {(cmd.lignes||[]).map(l=>`${l.qte}× ${l.item_nom}`).join(" · ")}
                     </div>
-                    {cmd.note&&<div style={{fontSize:11,color:C.dim,fontStyle:"italic",marginBottom:8}}>📝 {cmd.note}</div>}
                     <div style={{display:"flex",justifyContent:"flex-end",gap:6}}>
                       <button onClick={()=>{if(window.confirm(`Marquer la commande ${cmd.gang_nom} comme livrée ? Le stock sera décrémenté.`))livrerCommandeRecue(cmd);}} style={{fontSize:11,padding:"5px 12px",fontWeight:700,background:C.green,color:"#1a1a1a",border:"none",borderRadius:4,cursor:"pointer"}}>✓ Livrer</button>
                       <button onClick={()=>{if(window.confirm("Supprimer cette commande ?"))delCommandeRecue(cmd);}} style={{fontSize:11,padding:"5px 10px",color:C.red}}>×</button>
@@ -3196,6 +3216,7 @@ function Main({cu,setCu,onLogout}){
                         {(cmd.lignes||[]).map(l=>`${l.qte}×${l.item_nom}`).join(" · ")}
                       </div>
                     </div>
+                    {+cmd.montant>0&&<span style={{fontSize:13,fontWeight:700,color:C.green,whiteSpace:"nowrap"}}>{fmt(cmd.montant)}</span>}
                     <span style={{fontSize:10,color:C.dim,whiteSpace:"nowrap"}}>{cmd.livree_at?fmtDateTime(new Date(cmd.livree_at)):""}</span>
                     {isAdmin&&<button onClick={()=>{if(window.confirm("Supprimer cette commande de l'historique ?"))delCommandeRecue(cmd);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
                   </div>
@@ -3307,58 +3328,41 @@ function Main({cu,setCu,onLogout}){
                 Aucun item suivi. Utilise le bouton "+ Item" ci-dessus pour configurer ce qui doit être stocké à Londres.
               </div>
             ) : (
-              <div data-mobile="stock-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div data-mobile="stock-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
                 {stockLondres.map(s=>{
                   const isLow = s.quantite < s.seuil;
-                  // Trouver le poids de l'item référencé
-                  const item = s.item_type === "pm"
-                    ? itemsPM.find(i => i.id === s.item_id)
-                    : itemsG.find(i => i.id === s.item_id);
-                  const poids = item?.poids || 0;
-                  const totalKg = s.quantite * poids;
                   return (
                     <div key={s.id} style={{
+                      display:"flex",
+                      alignItems:"center",
+                      gap:8,
                       background:isLow?"rgba(223,90,68,0.06)":C.surfaceAlt,
                       border:"1px solid "+(isLow?"rgba(223,90,68,0.3)":C.border),
                       borderRadius:6,
-                      padding:"10px 12px"
+                      padding:"6px 10px",
+                      minHeight:40
                     }}>
-                      <div style={{marginBottom:6}}>
-                        <span style={{fontSize:13,fontWeight:600,color:isLow?C.red:C.text,display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {s.item_nom}
-                        </span>
-                      </div>
-                      <div style={{display:"flex",alignItems:"flex-end",gap:6,marginBottom:6}}>
-                        <div style={{flex:1}}>
-                          <div style={{...S.lbl,textAlign:"center"}}>Stock</div>
-                          <input
-                            type="number"
-                            min="0"
-                            value={s.quantite}
-                            onChange={e=>updateStockQty(s.id, e.target.value)}
-                            style={{width:"100%",fontSize:18,fontWeight:700,textAlign:"center",padding:"4px 6px",color:isLow?C.red:C.text}}
-                            title="Quantité actuelle"
-                          />
-                        </div>
-                        <div style={{width:60}}>
-                          <div style={{...S.lbl,textAlign:"center"}}>Seuil</div>
-                          <input
-                            type="number"
-                            min="0"
-                            value={s.seuil}
-                            onChange={e=>updateStockSeuil(s.id, e.target.value)}
-                            style={{width:"100%",fontSize:12,textAlign:"center",padding:"4px 6px",color:C.muted}}
-                            title="Seuil d'alerte"
-                          />
-                        </div>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:10,color:C.dim}}>
-                        <span>
-                          {poids>0&&<>{fmtKgD(poids)}/u · <strong style={{color:C.blue}}>{fmtKgD(totalKg)}</strong></>}
-                          {poids===0&&<span style={{fontStyle:"italic"}}>poids non défini</span>}
-                        </span>
-                        {isAdmin&&<button onClick={()=>{if(window.confirm(`Retirer ${s.item_nom} du suivi ?`))removeStockItem(s.id);}} style={{fontSize:10,padding:"2px 6px",color:C.red}}>×</button>}
-                      </div>
+                      <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:600,color:isLow?C.red:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={s.item_nom}>
+                        {s.item_nom}
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={s.quantite}
+                        onChange={e=>updateStockQty(s.id, e.target.value)}
+                        style={{width:54,fontSize:14,fontWeight:700,textAlign:"center",padding:"3px 4px",color:isLow?C.red:C.text}}
+                        title="Stock actuel"
+                      />
+                      <span style={{fontSize:12,color:C.dim}}>/</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={s.seuil}
+                        onChange={e=>updateStockSeuil(s.id, e.target.value)}
+                        style={{width:46,fontSize:12,textAlign:"center",padding:"3px 4px",color:C.muted}}
+                        title="Seuil d'alerte"
+                      />
+                      {isAdmin&&<button onClick={()=>{if(window.confirm(`Retirer ${s.item_nom} du suivi ?`))removeStockItem(s.id);}} style={{fontSize:12,padding:"2px 6px",color:C.red,lineHeight:1}} title="Retirer du suivi">×</button>}
                     </div>
                   );
                 })}
@@ -3370,7 +3374,7 @@ function Main({cu,setCu,onLogout}){
 
       {/* ═══ STATS ═══ */}
       {tab==="stats"&&(
-        <StatsView history={history} blanchHistory={blanchHistory} pms={pms} pmGroupes={pmGroupes} setTab={setTab} setHFil={setHFil} setHFrom={setHFrom} setHTo={setHTo}/>
+        <StatsView history={history} blanchHistory={blanchHistory} pms={pms} pmGroupes={pmGroupes} commandesRecues={commandesRecues} entrepotsHistory={entrepotsHistory} setTab={setTab} setHFil={setHFil} setHFrom={setHFrom} setHTo={setHTo}/>
       )}
 
       {tab==="database"&&(
@@ -3690,7 +3694,7 @@ function BarChart({data, granularity, color, height=200}){
   );
 }
 
-function StatsView({history,blanchHistory,pms,pmGroupes,setTab,setHFil,setHFrom,setHTo}){
+function StatsView({history,blanchHistory,pms,pmGroupes,commandesRecues,entrepotsHistory,setTab,setHFil,setHFrom,setHTo}){
   const [period,setPeriod]=useState("7"); // "today" | "7" | "30" | "total"
 
   // Calcul de la plage de dates LOCALES selon la période
@@ -3715,6 +3719,33 @@ function StatsView({history,blanchHistory,pms,pmGroupes,setTab,setHFil,setHFrom,
     if(!periodRange.from)return history;
     return history.filter(h=>h.date>=periodRange.from && h.date<=periodRange.to);
   },[history,periodRange]);
+
+  // ── Commandes reçues livrées sur la période (basé sur livree_at) ──
+  const cmdLivreesInPeriod=useMemo(()=>{
+    const list = (commandesRecues||[]).filter(c => c.status==="livree" && c.livree_at);
+    if(!periodRange.from) return list;
+    const fromTs=new Date(periodRange.from+"T00:00:00").getTime();
+    const toTs=new Date(periodRange.to+"T23:59:59").getTime();
+    return list.filter(c=>{
+      const t=new Date(c.livree_at).getTime();
+      return t>=fromTs && t<=toTs;
+    });
+  },[commandesRecues,periodRange]);
+  const totCmdRecues=cmdLivreesInPeriod.reduce((s,c)=>s+(+c.montant||0),0);
+
+  // ── Entrepôts récupérés sur la période (basé sur recup_at) ──
+  const entrepotsInPeriod=useMemo(()=>{
+    const list = entrepotsHistory||[];
+    if(!periodRange.from) return list;
+    const fromTs=new Date(periodRange.from+"T00:00:00").getTime();
+    const toTs=new Date(periodRange.to+"T23:59:59").getTime();
+    return list.filter(e=>{
+      if(!e.recup_at) return false;
+      const t=new Date(e.recup_at).getTime();
+      return t>=fromTs && t<=toTs;
+    });
+  },[entrepotsHistory,periodRange]);
+  const totEntrepots=entrepotsInPeriod.reduce((s,e)=>s+(+e.montant||0),0);
 
   // Calcul total payé aux PM (uniquement dest=pm)
   const totPaye=useMemo(()=>{
@@ -3987,16 +4018,35 @@ function StatsView({history,blanchHistory,pms,pmGroupes,setTab,setHFil,setHFrom,
           <div style={{fontSize:20,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totPaye)}</div>
         </div>
         <div style={card}>
-          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Argent sale généré PM</div>
-          <div style={{fontSize:20,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBrut)}</div>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Argent sale généré</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.red,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBrut+totEntrepots+totCmdRecues)}</div>
+          <div style={{fontSize:9,color:C.dim,marginTop:4}}>PM · entrepôts · commandes</div>
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Bénéfice net estimé</div>
-          <div style={{fontSize:20,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(Math.round(totBrut*0.8)-totPaye)}</div>
+          <div style={{fontSize:20,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(Math.round(totBrut*0.8)-totPaye+totEntrepots+totCmdRecues)}</div>
         </div>
         <div style={card}>
           <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Total blanchi</div>
           <div style={{fontSize:20,fontWeight:600,color:C.amber,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totBlanch)}</div>
+        </div>
+      </div>
+
+      {/* ── Détail des revenus annexes (entrepôts + commandes livrées) ── */}
+      <div data-mobile="grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div style={card}>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
+            <span>📦 Entrepôts récupérés</span>
+            <span style={{color:C.dim,letterSpacing:"normal",textTransform:"none"}}>{entrepotsInPeriod.length}</span>
+          </div>
+          <div style={{fontSize:18,fontWeight:600,color:C.amber,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totEntrepots)}</div>
+        </div>
+        <div style={card}>
+          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,display:"flex",justifyContent:"space-between"}}>
+            <span>🎯 Commandes livrées</span>
+            <span style={{color:C.dim,letterSpacing:"normal",textTransform:"none"}}>{cmdLivreesInPeriod.length}</span>
+          </div>
+          <div style={{fontSize:18,fontWeight:600,color:C.green,lineHeight:1.1,wordBreak:"break-word"}}>{fmt(totCmdRecues)}</div>
         </div>
       </div>
 
