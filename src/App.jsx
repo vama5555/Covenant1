@@ -1047,12 +1047,12 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
           </select>
         </div>
         <div>
-          <div style={S.lbl}>Montant payé ($) <span style={{color:C.red,fontSize:9,marginLeft:4,fontWeight:600}}>SALE</span> <span style={{color:C.red}}>*</span></div>
+          <div style={S.lbl}>Montant payé ($) <span style={{color:C.red}}>*</span></div>
           <MoneyInput
             value={montant}
             onChange={e=>setMontant(e.target.value)}
             placeholder="0"
-            style={{width:"100%",color:+montant>0?C.red:undefined,fontWeight:+montant>0?600:400}}
+            style={{width:"100%"}}
           />
         </div>
       </div>
