@@ -1181,6 +1181,8 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
   const [gangId, setGangId] = useState("");
   const [montant, setMontant] = useState("");
   const [qtes, setQtes] = useState({}); // {stockId: qte}
+  const [itemsOpen, setItemsOpen] = useState(true); // section déroulable
+  const [itemsQuery, setItemsQuery] = useState(""); // recherche
   const onAddRef = useRef(onAdd);
   useEffect(()=>{onAddRef.current = onAdd;});
 
@@ -1192,8 +1194,16 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
     return {...s, item};
   }).filter(s => s.item);
 
+  // Filtre de recherche : compare la query (lowercased, trim) au nom de l'item
+  const filteredItems = useMemo(() => {
+    const q = itemsQuery.trim().toLowerCase();
+    if(!q) return stockItems;
+    return stockItems.filter(s => (s.item_nom||"").toLowerCase().includes(q));
+  }, [stockItems, itemsQuery]);
+
   const totalQte = Object.values(qtes).reduce((a,b)=>a+(+b||0), 0);
-  // Poids total = somme(qte × poids unitaire)
+  const selCount = Object.values(qtes).filter(v => +v > 0).length;
+  // Poids total = somme(qte × poids unitaire) — calculé sur TOUS les items, pas juste filtrés
   const totalKg = stockItems.reduce((sum, s) => {
     const q = +qtes[s.id]||0;
     return sum + q * (+s.item?.poids||0);
@@ -1217,7 +1227,7 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
       lignes: lignes,
       montant: +montant||0
     });
-    setGangId(""); setMontant(""); setQtes({});
+    setGangId(""); setMontant(""); setQtes({}); setItemsQuery("");
   }
 
   return (
@@ -1243,34 +1253,64 @@ const AddCmdRecueForm = memo(function AddCmdRecueForm({gangs, itemsPM, itemsG, s
       </div>
       {stockItems.length>0 && (
         <>
-          <div style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Items à livrer</div>
-          <div style={{maxHeight:240,overflowY:"auto",borderTop:"1px solid "+C.border,borderBottom:"1px solid "+C.border,marginBottom:10}}>
-            {stockItems.map(s => {
-              const poids = +s.item?.poids||0;
-              const qte = +qtes[s.id]||0;
-              const ligneKg = qte * poids;
-              return (
-                <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
-                  <span style={{flex:1,fontSize:13,color:C.text,minWidth:0}}>
-                    {s.item_nom}
-                    <span style={{fontSize:10,color:C.muted,marginLeft:6}}>
-                      stock : {s.quantite}
-                      {poids>0&&<> · {fmtKgD(poids)}/u</>}
-                    </span>
-                  </span>
-                  {ligneKg>0&&<span style={{fontSize:11,color:C.blue,fontWeight:600,whiteSpace:"nowrap"}}>{fmtKgD(ligneKg)}</span>}
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={qtes[s.id]||""}
-                    onChange={e=>setQtes(q => ({...q, [s.id]: e.target.value}))}
-                    style={{width:72,textAlign:"center"}}
-                  />
-                </div>
-              );
-            })}
+          {/* En-tête cliquable de la section Items */}
+          <div
+            onClick={()=>setItemsOpen(o=>!o)}
+            style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:"8px 4px",borderTop:"1px solid "+C.border,borderBottom:itemsOpen?"none":"1px solid "+C.border,marginBottom:itemsOpen?0:10,userSelect:"none"}}
+          >
+            <span style={{fontSize:11,color:C.muted,transition:"transform .15s",display:"inline-block",transform:itemsOpen?"rotate(90deg)":"rotate(0deg)"}}>▶</span>
+            <span style={{fontSize:10,fontWeight:600,color:C.muted,textTransform:"uppercase",letterSpacing:"0.08em"}}>Items à livrer</span>
+            {selCount>0 && (
+              <span style={{fontSize:10,padding:"1px 7px",borderRadius:4,fontWeight:600,background:"rgba(127,184,107,0.15)",color:C.green,border:"1px solid rgba(127,184,107,0.3)"}}>
+                {selCount} sélectionné{selCount>1?"s":""}
+              </span>
+            )}
+            <span style={{fontSize:11,color:C.muted,marginLeft:"auto"}}>
+              {itemsOpen ? `${filteredItems.length} / ${stockItems.length} items` : `${stockItems.length} items`}
+            </span>
           </div>
+          {itemsOpen && (
+            <div style={{padding:"10px 0 6px"}}>
+              <input
+                type="text"
+                placeholder="🔍 Rechercher un item..."
+                value={itemsQuery}
+                onChange={e=>setItemsQuery(e.target.value)}
+                style={{width:"100%",marginBottom:10,fontSize:13,padding:"8px 11px"}}
+              />
+              <div style={{maxHeight:280,overflowY:"auto",paddingRight:4}}>
+                {filteredItems.length===0 ? (
+                  <div style={{textAlign:"center",padding:30,color:C.muted,fontSize:11,fontStyle:"italic"}}>
+                    Aucun item trouvé
+                  </div>
+                ) : filteredItems.map(s => {
+                  const poids = +s.item?.poids||0;
+                  const qte = +qtes[s.id]||0;
+                  const ligneKg = qte * poids;
+                  return (
+                    <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 4px",borderBottom:"1px solid #404040"}}>
+                      <span style={{flex:1,fontSize:13,color:C.text,minWidth:0}}>
+                        {s.item_nom}
+                        <span style={{fontSize:10,color:C.muted,marginLeft:6}}>
+                          stock : {s.quantite}
+                          {poids>0&&<> · {fmtKgD(poids)}/u</>}
+                        </span>
+                      </span>
+                      {ligneKg>0&&<span style={{fontSize:11,color:C.blue,fontWeight:600,whiteSpace:"nowrap"}}>{fmtKgD(ligneKg)}</span>}
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={qtes[s.id]||""}
+                        onChange={e=>setQtes(q => ({...q, [s.id]: e.target.value}))}
+                        style={{width:72,textAlign:"center"}}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </>
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
